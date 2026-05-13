@@ -5,36 +5,38 @@
 <h1 align="center">BugHunter AI</h1>
 
 <p align="center">
-  <strong>Autonomous Bug Bounty Hunting Framework Powered by Claude Code</strong>
+  <strong>Autonomous Bug Bounty Hunting Framework Powered by Claude Code + PAI</strong>
 </p>
 
 <p align="center">
-  <em>20 specialized AI agents. State-machine orchestration. Zero human input required.</em>
+  <em>20 specialized AI agents. State-machine orchestration. 51 skills. 13 expert agents. Zero human input required.</em>
 </p>
 
 <p align="center">
   <a href="#quick-start">Quick Start</a> &bull;
-  <a href="#features">Features</a> &bull;
+  <a href="#full-setup-guide">Full Setup</a> &bull;
+  <a href="#pai-superpowers">Superpowers</a> &bull;
   <a href="#architecture">Architecture</a> &bull;
-  <a href="#installation">Installation</a> &bull;
-  <a href="#sample-prompts">Sample Prompts</a> &bull;
   <a href="#agents">Agents</a> &bull;
+  <a href="#sample-prompts">Prompts</a> &bull;
   <a href="#contributing">Contributing</a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Claude_Code-Opus_4-blueviolet?style=for-the-badge&logo=anthropic" alt="Claude Code" />
+  <img src="https://img.shields.io/badge/PAI-v3.0-blue?style=for-the-badge" alt="PAI v3.0" />
   <img src="https://img.shields.io/badge/Agents-20-orange?style=for-the-badge" alt="20 Agents" />
+  <img src="https://img.shields.io/badge/Skills-51-green?style=for-the-badge" alt="51 Skills" />
   <img src="https://img.shields.io/badge/TypeScript-Bun-black?style=for-the-badge&logo=bun" alt="Bun" />
-  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License" />
   <img src="https://img.shields.io/badge/Burp_Suite-MCP-red?style=for-the-badge" alt="Burp MCP" />
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License" />
 </p>
 
 ---
 
 ## What is BugHunter AI?
 
-BugHunter AI is an **autonomous bug bounty hunting framework** that turns [Claude Code](https://docs.anthropic.com/en/docs/claude-code) into an elite security researcher. Type `hunt <target>` and watch 20 specialized AI agents systematically map, analyze, and attack your target — finding critical vulnerabilities that manual testing misses.
+BugHunter AI is an **autonomous bug bounty hunting framework** that turns [Claude Code](https://docs.anthropic.com/en/docs/claude-code) into an elite security researcher. Built on top of the **PAI (Personal AI Infrastructure)** system, it combines 20 specialized vulnerability agents, 51 skills, 13 expert AI agents, 20 lifecycle hooks, and a full offensive security toolchain into a single command:
 
 ```bash
 # That's it. One command. Autonomous hunting.
@@ -63,28 +65,126 @@ hunt https://app.example.com
 | Miss AI/LLM vulnerabilities | Dedicated LLMSecurityAgent with OWASP LLM Top 10 |
 | Medium findings silently dropped | Mediums archived for attack chain correlation |
 | No memory between hunts | Cross-session learning — gets smarter with every engagement |
+| Single tool / single domain | 51 skills covering web, mobile, API, cloud, network, binary, AI |
 
 ---
 
-## Features
+## The Full Stack: PAI + Superpowers + BugHunter
 
-### Core Framework
-- **State Machine Orchestration** — 10-phase hunt lifecycle with checkpointing, retry-on-fail, and resume support
-- **Credential Vault** — Encrypted credential storage, environment variable overrides, 1Password CLI integration, auto-redaction
-- **Auth Flow Automation** — B2C, OAuth, SAML, SSO strategies with session persistence and auto-refresh
-- **Live Dashboard** — Real-time phase progress, finding counts, and agent status via `--status`
+BugHunter AI is not just a skill — it's part of a **complete offensive security infrastructure**. Here's what you get when you install the full setup:
 
-### Intelligence
-- **20 Specialized Agents** — Each agent is an expert in one vulnerability class (XSS, SQLi, SSRF, IDOR, etc.)
-- **Hypothesis-Driven Testing** — Agents receive specific attack hypotheses from AppProfile, not "scan everything"
-- **AI/LLM Target Track** — Dedicated LLMSecurityAgent for OWASP LLM Top 10, prompt injection, RAG poisoning
-- **Cross-Session Learning** — Findings and techniques persist across hunts, pattern matching improves over time
+### PAI (Personal AI Infrastructure) v3.0
 
-### Integration
-- **Burp Suite MCP Bridge** — Health checks, scope sync, traffic verification, Collaborator polling, HAR export
-- **Playwright Dynamic Testing** — Browser automation for DOM-based testing, app profiling, and evidence capture
-- **Appium Mobile Testing** — Android/iOS app security testing with SSL pinning bypass
-- **Configurable Severity** — Three modes: `bounty` (CVSS>=8.0), `pentest` (>=4.0), `comprehensive` (all)
+The foundation layer. PAI is a general problem-solving system that provides:
+
+- **The Algorithm (v1.5.0)** — 7-phase structured reasoning (OBSERVE → THINK → PLAN → BUILD → EXECUTE → VERIFY → LEARN)
+- **51 Skills** — Specialized capabilities from security to content creation
+- **13 Expert Agents** — Architect, Engineer, Pentester, Researcher variants, QA Tester, and more
+- **20 Lifecycle Hooks** — Automated security validation, session management, algorithm tracking
+- **Cross-Session Memory** — Persistent learning across conversations
+- **Voice System** — ElevenLabs TTS integration with custom AI personality
+- **Multi-Channel Notifications** — ntfy, Discord, Twilio alerts for long tasks and findings
+
+### Superpowers Plugin
+
+Claude Code's official `superpowers` plugin adds enhanced capabilities:
+
+- Extended tool access and MCP server integration
+- Advanced agent orchestration with team mode
+- Enhanced permission management
+
+### Security Skill Stack (16 Skills)
+
+| Skill | Coverage |
+|-------|----------|
+| **BugBountyFramework** | Autonomous 10-phase hunt orchestration |
+| **WebAssessment** | OWASP WSTG v5, OWASP Top 10 |
+| **SecurityHub** | Master security command center with intelligent skill routing |
+| **OffensiveSecurityOrchestrator** | Kill chain tracking, adaptive methodology |
+| **APISecurityTesting** | REST, GraphQL, gRPC, BOLA, BFLA, mass assignment |
+| **MobileSecurity** | OWASP MASTG v2, Frida, Objection, MobSF |
+| **NetworkSecurity** | AD attacks, BloodHound, Kerberoasting, pivoting |
+| **CloudSecurity** | AWS/Azure/GCP, IAM escalation, Pacu, ScoutSuite |
+| **ExploitDev** | Heap exploitation, ROP chains, safe-linking bypass |
+| **ReverseEngineering** | Ghidra, radare2, binary analysis |
+| **MalwareAnalysis** | Static/dynamic analysis, YARA, IOC extraction |
+| **PromptInjection** | OWASP LLM Top 10, MITRE ATLAS |
+| **VulnResearch** | CVE development, AFL++ fuzzing, CodeQL |
+| **SASTOrchestration** | Semgrep, CodeQL, custom rules, taint tracking |
+| **SCASecurity** | SBOM, supply chain, dependency confusion |
+| **ThreatModeling** | STRIDE, PASTA, attack trees |
+| **Recon** | Subdomain enum, asset discovery, Shodan |
+| **RedTeam** | 32-agent adversarial analysis |
+
+### Expert Agent Army (13 Agents)
+
+| Agent | Specialty |
+|-------|-----------|
+| **Pentester** | Offensive security specialist — vulnerability assessment, exploitation |
+| **Engineer** | Elite principal engineer — TDD, strategic planning |
+| **Architect** | System design — constitutional principles, feature specs |
+| **Algorithm** | PAI Algorithm expert — ISC creation and evolution |
+| **Designer** | UX/UI specialist — Figma, shadcn/ui |
+| **Artist** | Visual content — Flux, GPT-Image-1, prompt engineering |
+| **QATester** | Browser-automation validation — Gate 4 completion gates |
+| **Intern** | 176-IQ generalist — multi-faceted problem solving |
+| **ClaudeResearcher** | Multi-query academic research via Claude WebSearch |
+| **CodexResearcher** | Technical archaeology — O3, GPT-5-Codex consultation |
+| **GeminiResearcher** | Multi-perspective research via Google Gemini |
+| **GrokResearcher** | Contrarian analysis via xAI Grok |
+| **PerplexityResearcher** | Investigative journalism via Perplexity |
+
+### MCP Servers (3 Core + 5 Recommended)
+
+**Core (Pre-configured):**
+| Server | Purpose |
+|--------|---------|
+| **Burp Suite MCP** | Proxy traffic analysis, scope sync, Collaborator, HAR export |
+| **Filesystem MCP** | Direct file system access |
+| **GitHub MCP** | Repository operations, PR management |
+
+**Recommended Security MCPs:**
+| Server | Purpose | Install |
+|--------|---------|---------|
+| **Shodan** | Internet asset search | `npm install -g @shodan/mcp-server` |
+| **VirusTotal** | Malware/IOC analysis | `npx -y @virustotal/mcp-server` |
+| **CVE/NVD** | Vulnerability database | Custom Python server |
+| **Nuclei** | Vulnerability scanning | Custom Node server |
+| **GitHub Security Advisory** | CVE tracking | Via GitHub MCP |
+
+### Plugins (4 Active)
+
+| Plugin | Purpose |
+|--------|---------|
+| **superpowers** | Enhanced Claude Code capabilities |
+| **claude-mem** | Persistent cross-session memory |
+| **swift-lsp** | Swift language server protocol |
+| **ui-ux-pro-max** | Advanced UI/UX design capabilities |
+
+### Lifecycle Hooks (20 Hooks)
+
+| Hook | Trigger | Purpose |
+|------|---------|---------|
+| **SecurityValidator** | Pre: Bash, Edit, Write, Read | Validates all tool calls for security |
+| **VoiceGate** | Pre: Bash | Voice notification gate |
+| **AgentExecutionGuard** | Pre: Task | Guards agent execution |
+| **SkillGuard** | Pre: Skill | Validates skill invocations |
+| **SetQuestionTab** | Pre: AskUserQuestion | Terminal tab management |
+| **AlgorithmTracker** | Post: Bash, Task* | Tracks algorithm phase progression |
+| **QuestionAnswered** | Post: AskUserQuestion | Tracks Q&A flow |
+| **WorkCompletionLearning** | SessionEnd | Captures learnings from work |
+| **SessionSummary** | SessionEnd | Generates session summaries |
+| **RelationshipMemory** | SessionEnd | Builds relationship context |
+| **UpdateCounts** | SessionEnd | Updates system statistics |
+| **IntegrityCheck** | SessionEnd | Validates system integrity |
+| **RatingCapture** | UserPromptSubmit | Captures quality ratings |
+| **AutoWorkCreation** | UserPromptSubmit | Auto-creates work tracking |
+| **UpdateTabTitle** | UserPromptSubmit | Dynamic terminal tab titles |
+| **SessionAutoName** | UserPromptSubmit | Auto-names sessions |
+| **StartupGreeting** | SessionStart | Displays PAI banner |
+| **LoadContext** | SessionStart | Loads session context |
+| **CheckVersion** | SessionStart | Version checks |
+| **StopOrchestrator** | Stop | Clean shutdown handling |
 
 ---
 
@@ -96,6 +196,15 @@ flowchart TB
         A["hunt target.com"]
         B["hunt --config target.json"]
         C["hunt --apk app.apk"]
+    end
+
+    subgraph PAI["PAI Infrastructure (v3.0)"]
+        direction TB
+        ALG["The Algorithm (7 phases)"]
+        SK["51 Skills"]
+        HK["20 Hooks"]
+        MEM["Cross-Session Memory"]
+        VOICE["Voice System"]
     end
 
     subgraph Orchestrator["Hunt Orchestrator (State Machine)"]
@@ -122,6 +231,14 @@ flowchart TB
         AP["Appium Harness"]
     end
 
+    subgraph MCPs["MCP Servers"]
+        BURP["Burp Suite MCP"]
+        FS["Filesystem MCP"]
+        GH["GitHub MCP"]
+        SH["Shodan MCP"]
+        VT["VirusTotal MCP"]
+    end
+
     subgraph Agents["Agent Army (Parallel)"]
         direction LR
         AG1["XSSAgent"]
@@ -132,29 +249,46 @@ flowchart TB
         AG6["LLMSecurityAgent"]
         AG7["APIAgent"]
         AG8["MobileAgent"]
-        AG9["...15 more"]
+        AG9["...12 more"]
+    end
+
+    subgraph SecuritySkills["Security Skills (16)"]
+        direction LR
+        SS1["WebAssessment"]
+        SS2["SecurityHub"]
+        SS3["APISecurityTesting"]
+        SS4["PromptInjection"]
+        SS5["...12 more"]
     end
 
     subgraph Output["Output"]
         R["Bug Bounty Report"]
         F["Real-time Findings"]
         D["Live Dashboard"]
+        N["Notifications (ntfy/Discord/SMS)"]
     end
 
-    Input --> Orchestrator
+    Input --> PAI
+    PAI --> Orchestrator
     P2 --> V
     P3 --> AU
     P3 --> BB
+    P4 --> SecuritySkills
     P5 --> Agents
     P6 --> PW
     P6 --> AP
+    Agents --> MCPs
     Agents --> F
     P9 --> R
     Orchestrator --> D
+    F --> N
 
+    style PAI fill:#1e3a5f,stroke:#3b82f6,color:#fff
     style Orchestrator fill:#1a1a2e,stroke:#e94560,color:#fff
     style Agents fill:#0f3460,stroke:#e94560,color:#fff
     style Tools fill:#16213e,stroke:#0f3460,color:#fff
+    style MCPs fill:#1a1a3e,stroke:#00d2ff,color:#fff
+    style SecuritySkills fill:#2d1b69,stroke:#8b5cf6,color:#fff
     style Input fill:#533483,stroke:#e94560,color:#fff
     style Output fill:#0f3460,stroke:#00d2ff,color:#fff
 ```
@@ -163,232 +297,47 @@ flowchart TB
 
 ## Quick Start
 
-### 1. Prerequisites
-
-You need these installed before using BugHunter AI:
-
-| Tool | Required | Install | Purpose |
-|------|----------|---------|---------|
-| **Claude Code** | Yes | `npm install -g @anthropic-ai/claude-code` | The AI engine |
-| **Bun** | Yes | `curl -fsSL https://bun.sh/install \| bash` | TypeScript runtime for tools |
-| **Playwright** | Yes | `bun add playwright && bunx playwright install chromium` | Browser automation |
-| **Burp Suite** | Recommended | [portswigger.net](https://portswigger.net/burp) | Proxy & traffic analysis |
-| **Go tools** | Recommended | See below | Recon toolchain |
-
-<details>
-<summary><strong>Install Go recon tools (click to expand)</strong></summary>
+For the minimal BugHunter-only install:
 
 ```bash
-# Install Go first: https://go.dev/dl/
-go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
-go install github.com/projectdiscovery/httpx/cmd/httpx@latest
-go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-go install github.com/projectdiscovery/naabu/v2/cmd/naabu@latest
-go install github.com/tomnomnom/assetfinder@latest
-go install github.com/tomnomnom/waybackurls@latest
-go install github.com/tomnomnom/unfurl@latest
-go install github.com/lc/gau/v2/cmd/gau@latest
-go install github.com/ffuf/ffuf/v2@latest
-go install github.com/sensepost/gowitness@latest
-```
-
-</details>
-
-<details>
-<summary><strong>Optional: 1Password CLI for credential vault</strong></summary>
-
-```bash
-# macOS
-brew install 1password-cli
-
-# Linux
-curl -sS https://downloads.1password.com/linux/keys/1password.asc | \
-  sudo gpg --dearmor --output /usr/share/keyrings/1password-archive-keyring.gpg
-# Then follow: https://developer.1password.com/docs/cli/get-started/
-```
-
-</details>
-
-<details>
-<summary><strong>Optional: sqlmap for SQL injection testing</strong></summary>
-
-```bash
-# macOS
-brew install sqlmap
-
-# Linux/pip
-pip install sqlmap
-```
-
-</details>
-
-### 2. Install BugHunter AI
-
-```bash
-# Clone the repo
 git clone https://github.com/h4ckologic/bughunter-ai.git
 cd bughunter-ai
-
-# Run the installer (copies skills to ~/.claude/skills/)
 ./install.sh
 ```
 
-**Or install manually:**
-
-```bash
-# Copy the skill to Claude Code's skills directory
-cp -r skills/BugBountyFramework ~/.claude/skills/BugBountyFramework
-
-# Create the memory directories
-mkdir -p ~/.claude/MEMORY/BugBounty/{Findings,LearningLogs,PatternDB,TargetProfiles,Sessions,Vault}
-
-# Initialize the pattern database
-echo "# Master Patterns\n\nNo patterns yet. They'll accumulate as you hunt." \
-  > ~/.claude/MEMORY/BugBounty/PatternDB/master-patterns.md
-
-echo "# Effective Techniques Log\n\nTechniques that worked across engagements." \
-  > ~/.claude/MEMORY/BugBounty/LearningLogs/effective-techniques.md
-
-# Install TypeScript dependencies
-cd ~/.claude/skills/BugBountyFramework/Tools
-bun install playwright
-```
-
-### 3. Configure Burp Suite (Recommended)
-
-```bash
-# Start Burp Suite with REST API enabled
-# Burp → Project Options → Misc → REST API
-# Enable on port 1337
-
-# Verify Burp bridge
-cd ~/.claude/skills/BugBountyFramework/Tools
-bun burp-bridge.ts --health
-```
-
-### 4. Start Hunting
-
-```bash
-# Open Claude Code in your project directory
-claude
-
-# Type your first hunt command:
-hunt https://your-target.com
-```
+For the **full setup with PAI, Superpowers, and all security skills**, see the [Full Setup Guide](SETUP.md).
 
 ---
 
-## Installation Script
+## Full Setup Guide
 
-The repo includes an `install.sh` that does everything:
+See **[SETUP.md](SETUP.md)** for the complete, step-by-step guide to replicate the full infrastructure:
 
-```bash
-#!/bin/bash
-# install.sh — One-command BugHunter AI setup
-set -e
-
-echo "🎯 Installing BugHunter AI..."
-
-# Check prerequisites
-command -v claude >/dev/null 2>&1 || { echo "❌ Claude Code not found. Install: npm i -g @anthropic-ai/claude-code"; exit 1; }
-command -v bun >/dev/null 2>&1 || { echo "❌ Bun not found. Install: curl -fsSL https://bun.sh/install | bash"; exit 1; }
-
-# Copy skill
-mkdir -p ~/.claude/skills
-cp -r skills/BugBountyFramework ~/.claude/skills/BugBountyFramework
-echo "✅ Skill installed to ~/.claude/skills/BugBountyFramework"
-
-# Create memory directories
-mkdir -p ~/.claude/MEMORY/BugBounty/{Findings,LearningLogs,PatternDB,TargetProfiles,Sessions,Vault}
-echo "✅ Memory directories created"
-
-# Initialize databases
-[ ! -f ~/.claude/MEMORY/BugBounty/PatternDB/master-patterns.md ] && \
-  echo "# Master Patterns" > ~/.claude/MEMORY/BugBounty/PatternDB/master-patterns.md
-[ ! -f ~/.claude/MEMORY/BugBounty/LearningLogs/effective-techniques.md ] && \
-  echo "# Effective Techniques" > ~/.claude/MEMORY/BugBounty/LearningLogs/effective-techniques.md
-echo "✅ Pattern databases initialized"
-
-# Install Playwright
-cd ~/.claude/skills/BugBountyFramework/Tools
-bun install playwright 2>/dev/null || echo "⚠️  Playwright install skipped (run manually: bun add playwright)"
-echo "✅ Dependencies installed"
-
-echo ""
-echo "🎯 BugHunter AI installed successfully!"
-echo ""
-echo "Next steps:"
-echo "  1. Open Claude Code:  claude"
-echo "  2. Start hunting:     hunt https://your-target.com"
-echo "  3. Check status:      hunt https://your-target.com --status"
-echo ""
-```
+1. Install prerequisites (Claude Code, Bun, Go tools, Burp Suite)
+2. Install PAI v3.0 (the foundation)
+3. Configure your identity (DA + Principal)
+4. Install plugins (Superpowers, claude-mem, ui-ux-pro-max)
+5. Configure MCP servers (Burp, Filesystem, GitHub)
+6. Install BugHunter AI skill
+7. Set up optional security MCPs (Shodan, VirusTotal, NVD)
+8. Configure notifications (ntfy, Discord, Twilio)
+9. Verify the installation
 
 ---
 
-## Sample Prompts
+## Hunt Modes
 
-### Your First Hunt
+| Mode | CVSS Threshold | Finding Target | Best For |
+|------|----------------|----------------|----------|
+| `bounty` (default) | >= 8.0 | 10 | Bug bounty programs — only critical/high findings |
+| `pentest` | >= 4.0 | 20 | Penetration tests — comprehensive coverage |
+| `comprehensive` | >= 0.0 | 50 | Full security audits — everything documented |
 
+```bash
+hunt https://target.com                       # bounty mode (default)
+hunt https://target.com --mode pentest        # pentest mode
+hunt https://target.com --mode comprehensive  # comprehensive mode
 ```
-hunt https://app.example.com
-```
-
-That's it. BugHunter will autonomously:
-- Initialize the state machine
-- Map the application (pages, forms, APIs, tech stack)
-- Generate attack hypotheses
-- Deploy specialized agents in parallel
-- Report findings in real-time
-
-### Hunt with Stored Credentials
-
-```
-Store credentials for example-corp: username admin@test.com, password SecureP@ss123
-
-hunt https://app.example.com --creds vault:example-corp
-```
-
-### Pentest Mode (Find More)
-
-```
-hunt https://staging.example.com --mode pentest
-```
-
-Pentest mode lowers the CVSS threshold to 4.0 and targets 20 findings instead of 10.
-
-### Hunt an AI Application
-
-```
-hunt https://ai-chatbot.example.com --mode pentest
-
-Focus on AI-specific vulnerabilities:
-- Extract the system prompt
-- Test cross-user data access
-- Try prompt injection (direct and indirect)
-- Test RAG poisoning via document upload
-```
-
-### Resume a Hunt
-
-```
-hunt https://app.example.com --resume
-```
-
-### Full Power Hunt
-
-```
-hunt https://app.example.com using username test@example.com and password TestPass123
-
-Use all available tools, skills, workflows, and MCPs.
-Use Playwright and Burp MCPs to perform dynamic analysis.
-Map the entire application attack surface.
-Understand the application before attacking.
-Find 10 high-severity vulnerabilities.
-Don't stop until done.
-```
-
-See [examples/sample-prompts.md](examples/sample-prompts.md) for more.
 
 ---
 
@@ -447,19 +396,76 @@ This means **90% less noise** and **10x faster confirmation**.
 
 ---
 
-## Hunt Modes
+## Sample Prompts
 
-| Mode | CVSS Threshold | Finding Target | Best For |
-|------|----------------|----------------|----------|
-| `bounty` (default) | >= 8.0 | 10 | Bug bounty programs — only critical/high findings |
-| `pentest` | >= 4.0 | 20 | Penetration tests — comprehensive coverage |
-| `comprehensive` | >= 0.0 | 50 | Full security audits — everything documented |
+### Your First Hunt
 
-```bash
-hunt https://target.com                    # bounty mode (default)
-hunt https://target.com --mode pentest     # pentest mode
-hunt https://target.com --mode comprehensive  # comprehensive mode
 ```
+hunt https://app.example.com
+```
+
+### Hunt with Stored Credentials
+
+```
+Store credentials for example-corp: username admin@test.com, password SecureP@ss123
+
+hunt https://app.example.com --creds vault:example-corp
+```
+
+### Pentest Mode (Find More)
+
+```
+hunt https://staging.example.com --mode pentest
+```
+
+### Hunt an AI Application
+
+```
+hunt https://ai-chatbot.example.com --mode pentest
+
+Focus on AI-specific vulnerabilities:
+- Extract the system prompt
+- Test cross-user data access
+- Try prompt injection (direct and indirect)
+- Test RAG poisoning via document upload
+```
+
+### Resume a Hunt
+
+```
+hunt https://app.example.com --resume
+```
+
+### Full Power Hunt
+
+```
+hunt https://app.example.com using username test@example.com and password TestPass123
+
+Use all available tools, skills, workflows, and MCPs.
+Use Playwright and Burp MCPs to perform dynamic analysis.
+Map the entire application attack surface.
+Understand the application before attacking.
+Find 10 high-severity vulnerabilities.
+Don't stop until done.
+```
+
+### Use Security Skills Directly
+
+```
+# Run a web assessment using the WebAssessment skill
+/WebAssessment https://target.com
+
+# Use the SecurityHub for guided methodology
+/SecurityHub start assessment on https://target.com
+
+# Run OSINT reconnaissance
+/Recon https://target.com --deep
+
+# Test LLM/AI security
+/PromptInjection https://ai-app.com
+```
+
+See [examples/sample-prompts.md](examples/sample-prompts.md) for more.
 
 ---
 
@@ -500,52 +506,99 @@ hunt https://target.com --status
 ## Directory Structure
 
 ```
+# BugHunter AI Skill (installed to ~/.claude/skills/)
 ~/.claude/skills/BugBountyFramework/
 ├── SKILL.md                     # Main skill definition (v2.0)
-├── Agents/
-│   ├── AppReviewAgent.md        # Application understanding
-│   ├── LLMSecurityAgent.md      # AI/LLM security (OWASP LLM Top 10)
-│   ├── XSSAgent.md              # Cross-site scripting
-│   ├── SQLiAgent.md             # SQL injection
-│   ├── SSRFAgent.md             # Server-side request forgery
-│   ├── IDORAgent.md             # Insecure direct object references
-│   ├── AuthAgent.md             # Authentication bypass
-│   ├── APIAgent.md              # API security
-│   ├── CORSAgent.md             # CORS misconfiguration
-│   ├── FileUploadAgent.md       # File upload attacks
-│   ├── XXEAgent.md              # XML external entities
-│   ├── RCEAgent.md              # Remote code execution
-│   ├── BusinessLogicAgent.md    # Business logic flaws
-│   ├── MobileAgent.md           # Mobile security
-│   ├── WindowsAgent.md          # Windows/AD
-│   ├── ReconAgent.md            # Reconnaissance
+├── Agents/                      # 20 specialized vulnerability agents
+│   ├── AppReviewAgent.md
+│   ├── LLMSecurityAgent.md
+│   ├── XSSAgent.md
+│   ├── SQLiAgent.md
+│   ├── SSRFAgent.md
+│   ├── IDORAgent.md
+│   ├── AuthAgent.md
+│   ├── APIAgent.md
+│   ├── CORSAgent.md
+│   ├── FileUploadAgent.md
+│   ├── XXEAgent.md
+│   ├── RCEAgent.md
+│   ├── BusinessLogicAgent.md
+│   ├── MobileAgent.md
+│   ├── WindowsAgent.md
+│   ├── ReconAgent.md
 │   ├── ReverseEngineeringAgent.md
 │   ├── ExploitDevAgent.md
-│   └── DesktopAppAgent.md
-├── Tools/
-│   ├── hunt-orchestrator.ts     # State machine & dashboard
-│   ├── credential-vault.ts      # Encrypted credential management
-│   ├── auth-manager.ts          # Auth flow automation
-│   ├── burp-bridge.ts           # Burp Suite REST API bridge
-│   ├── playwright-harness.ts    # Browser automation
-│   └── appium-harness.ts        # Mobile testing
+│   ├── DesktopAppAgent.md
+│   └── LLMAgent.md
+├── Tools/                       # TypeScript tools (Bun runtime)
+│   ├── hunt-orchestrator.ts
+│   ├── credential-vault.ts
+│   ├── auth-manager.ts
+│   ├── burp-bridge.ts
+│   ├── playwright-harness.ts
+│   └── appium-harness.ts
 ├── Templates/
-│   ├── BugReport.md             # HackerOne/Bugcrowd report template
-│   └── TargetConfig.md          # Target configuration template
-└── Wordlists/                   # Custom wordlists
+│   ├── BugReport.md
+│   └── TargetConfig.md
+└── Wordlists/
 
-~/.claude/MEMORY/BugBounty/
-├── Sessions/                    # Hunt session data (auto-created)
-│   └── {target-slug}/
-│       ├── hunt-state.json      # Phase states & findings
-│       ├── auth-state.json      # Auth session persistence
-│       ├── findings/            # Individual finding files
-│       └── artifacts/           # HAR, screenshots, Burp exports
-├── Vault/                       # Encrypted credentials
-├── PatternDB/                   # Cross-session patterns
-├── LearningLogs/                # What worked / what didn't
-├── TargetProfiles/              # Per-target intelligence
-└── Findings/                    # Aggregated findings
+# PAI Infrastructure (the foundation)
+~/.claude/
+├── settings.json                # Central config (identity, hooks, permissions, plugins)
+├── CLAUDE.md                    # Entry point
+├── .mcp.json                    # MCP server configuration
+├── skills/                      # 51 skills
+│   ├── PAI/                     # Core PAI system
+│   ├── BugBountyFramework/      # This project
+│   ├── WebAssessment/           # OWASP WSTG v5
+│   ├── SecurityHub/             # Security command center
+│   ├── OffensiveSecurityOrchestrator/
+│   ├── APISecurityTesting/
+│   ├── MobileSecurity/
+│   ├── NetworkSecurity/
+│   ├── CloudSecurity/
+│   ├── ExploitDev/
+│   ├── ReverseEngineering/
+│   ├── MalwareAnalysis/
+│   ├── PromptInjection/
+│   ├── VulnResearch/
+│   ├── SASTOrchestration/
+│   ├── SCASecurity/
+│   ├── ThreatModeling/
+│   ├── Recon/
+│   ├── RedTeam/
+│   ├── OSINT/
+│   ├── Research/                # Multi-engine research
+│   ├── Browser/                 # Browser automation
+│   ├── Fabric/                  # 240+ prompt patterns
+│   └── ...35 more
+├── agents/                      # 13 expert agent definitions
+│   ├── Pentester.md
+│   ├── Engineer.md
+│   ├── Architect.md
+│   └── ...10 more
+├── hooks/                       # 20 lifecycle hooks
+│   ├── SecurityValidator.hook.ts
+│   ├── AlgorithmTracker.hook.ts
+│   ├── LoadContext.hook.ts
+│   ├── handlers/                # 7 hook handlers
+│   └── lib/                     # 12 shared libraries
+├── mcps/                        # Custom MCP servers
+│   └── burp-mcp/
+├── VoiceServer/                 # ElevenLabs TTS integration
+└── MEMORY/                      # Persistent memory system
+    ├── BugBounty/
+    │   ├── Sessions/
+    │   ├── Findings/
+    │   ├── PatternDB/
+    │   ├── LearningLogs/
+    │   ├── TargetProfiles/
+    │   └── Vault/
+    ├── LEARNING/
+    ├── SECURITY/
+    ├── STATE/
+    ├── WORK/
+    └── VOICE/
 ```
 
 ---
@@ -561,7 +614,9 @@ hunt https://target.com --status
 | **Parallel agents** | 5 specialized agents simultaneously | Single scanner | One person |
 | **State machine** | Checkpoints, resume, never loses progress | Run from scratch | Bookmarks/notes |
 | **Credential security** | Encrypted vault + 1Password | Config files | Plaintext notes |
-| **Severity modes** | bounty/pentest/comprehensive | Fixed rules | Manual filtering |
+| **Multi-domain** | Web + Mobile + API + Cloud + Network + Binary | Single domain | Limited scope |
+| **Algorithm** | 7-phase structured reasoning (PAI) | None | Informal methodology |
+| **Skills ecosystem** | 51 skills, 16 security-focused | Plugin-based | Tool-dependent |
 
 ---
 
@@ -589,6 +644,7 @@ We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 - Additional auth strategy templates
 - Better wordlists
 - Integration with more MCP servers
+- New security skills
 - Improved report templates
 - Bug fixes and documentation
 
@@ -603,6 +659,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 ## Acknowledgements
 
 - **[Anthropic](https://anthropic.com)** — Claude Code, the AI engine behind everything
+- **[Daniel Miessler / PAI](https://github.com/danielmiessler/PAI)** — Personal AI Infrastructure foundation
 - **[PortSwigger](https://portswigger.net)** — Burp Suite integration
 - **[ProjectDiscovery](https://projectdiscovery.io)** — Nuclei, httpx, subfinder, naabu
 - **[Playwright](https://playwright.dev)** — Browser automation
@@ -611,7 +668,7 @@ MIT License. See [LICENSE](LICENSE) for details.
 ---
 
 <p align="center">
-  <strong>Built with Claude Code by <a href="https://github.com/h4ckologic">h4ckologic</a></strong>
+  <strong>Built with Claude Code + PAI by <a href="https://github.com/h4ckologic">h4ckologic</a></strong>
 </p>
 
 <p align="center">
