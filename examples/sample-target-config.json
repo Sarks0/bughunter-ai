@@ -1,0 +1,14 @@
+{
+  "program_name": "ExampleCorp Bug Bounty",
+  "platform": "hackerone",
+  "scope_in": ["*.example.com", "api.example.com", "app.example.com"],
+  "scope_out": ["blog.example.com", "status.example.com"],
+  "target_types": ["web", "api"],
+  "auth_tokens": {
+    "session_cookie": "",
+    "api_key": "",
+    "jwt": ""
+  },
+  "max_severity_filter": "critical_high",
+  "notes": "Admin panel at /admin, GraphQL at /graphql, API docs at /api/docs"
+}

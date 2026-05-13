@@ -1,0 +1,41 @@
+# Dependencies
+node_modules/
+bun.lockb
+
+# Credentials (NEVER commit)
+*.enc
+credentials.*
+vault/
+auth-state.json
+storage-state.json
+
+# Session data
+Sessions/
+hunt-state.json
+hunt-events.jsonl
+
+# Findings (may contain sensitive data)
+findings/
+*-findings.json
+bounty-report-*.md
+
+# Burp Suite
+*.burp
+*.har
+
+# Screenshots
+screenshots/
+*.png
+!docs/images/*.png
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Temp
+/tmp/
+*.log
