@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <em>20 specialized AI agents. State-machine orchestration. 51 skills. 13 expert agents. Zero human input required.</em>
+  <em>28 specialized AI agents. 8 orchestrated workflows. State-machine orchestration. 51 skills. Zero human input required.</em>
 </p>
 
 <p align="center">
@@ -25,7 +25,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Claude_Code-Opus_4-blueviolet?style=for-the-badge&logo=anthropic" alt="Claude Code" />
   <img src="https://img.shields.io/badge/PAI-v3.0-blue?style=for-the-badge" alt="PAI v3.0" />
-  <img src="https://img.shields.io/badge/Agents-20-orange?style=for-the-badge" alt="20 Agents" />
+  <img src="https://img.shields.io/badge/Agents-28-orange?style=for-the-badge" alt="28 Agents" />
   <img src="https://img.shields.io/badge/Skills-51-green?style=for-the-badge" alt="51 Skills" />
   <img src="https://img.shields.io/badge/TypeScript-Bun-black?style=for-the-badge&logo=bun" alt="Bun" />
   <img src="https://img.shields.io/badge/Burp_Suite-MCP-red?style=for-the-badge" alt="Burp MCP" />
@@ -366,6 +366,14 @@ BugHunter deploys **20 specialized agents**, each an expert in one vulnerability
 | **ReverseEngineeringAgent** | Binary analysis | Static analysis, dynamic analysis, vulnerability identification |
 | **ExploitDevAgent** | Exploit development | PoC creation, payload crafting, reliability testing |
 | **DesktopAppAgent** | Desktop app security | Electron, .NET, Java app testing |
+| **GraphQLAgent** | GraphQL security | Introspection, batch abuse, nested DoS, relay IDOR, subscription hijack |
+| **WebSocketAgent** | WebSocket security | CSWSH, message injection, origin bypass, auth hijacking |
+| **CSRFAgent** | CSRF exploitation | Token/SameSite/Referer bypass, content-type tricks, CORS+CSRF chains |
+| **CachePoisoningAgent** | Web cache poisoning | Unkeyed header injection, cache deception, CDN-specific bypasses |
+| **HTTPSmugglingAgent** | HTTP request smuggling | CL.TE, TE.CL, H2.CL desync, response queue poisoning |
+| **SubdomainTakeoverAgent** | Subdomain takeover | Dangling DNS, cloud service fingerprinting, cookie/CSP impact |
+| **RaceConditionAgent** | Race conditions | HTTP/2 single-packet attack, limit bypass, double-spend, TOCTOU |
+| **PrototypePollutionAgent** | Prototype pollution | Client-side PP→XSS gadgets, server-side PP→RCE, AST injection |
 | **LLMAgent** | Legacy LLM testing | Basic prompt testing (superseded by LLMSecurityAgent) |
 
 ### How Agents Work
@@ -383,6 +391,44 @@ This means **90% less noise** and **10x faster confirmation**.
 
 ---
 
+## Orchestrator Workflows
+
+The hunt orchestrator classifies your target and dispatches the appropriate workflow. Each workflow defines its own phases, agent dispatch order, parallelism, and gate conditions.
+
+| Workflow | Trigger | Phases | Agents | Lines |
+|----------|---------|--------|--------|-------|
+| **W_HUNT_WEB** | Web application URL | 10 | 21 agents (parallel) | 2,018 |
+| **W_HUNT_API** | API endpoint / Swagger / GraphQL | 9 | 10 agents | 487 |
+| **W_HUNT_LLM** | AI/LLM app (chatbot, RAG, copilot) | 13 | 8 agents | 688 |
+| **W_HUNT_MOBILE** | APK / IPA file | 10 | 7 agents | 1,037 |
+| **W_HUNT_NETWORK** | IP range / CIDR / AD target | 9 | 5 agents | 814 |
+| **W_HUNT_CLOUD** | AWS / Azure / GCP environment | 10 | 5 agents | 607 |
+| **W_HUNT_THICK_CLIENT** | Electron / .NET / Java desktop app | 10 | 6 agents | 874 |
+| **W_RECON** | Standalone recon request | 10 | 2 agents | 703 |
+
+### How Workflows Work
+
+```
+hunt https://target.com
+  │
+  ├── Orchestrator classifies target type
+  ├── Loads W_HUNT_WEB workflow
+  ├── Phase 1: RECON (ReconAgent + SubdomainTakeoverAgent)
+  ├── Phase 2: APP PROFILING (AppReviewAgent via dev-browser)
+  ├── Phase 3: AUTH TESTING (AuthAgent)
+  ├── Phase 4: INJECTION (SQLi + XSS + XXE + RCE — PARALLEL)
+  ├── Phase 5: ACCESS CONTROL (IDOR + CORS + CSRF — PARALLEL)
+  ├── Phase 6: BUSINESS LOGIC (BusinessLogic + RaceCondition — PARALLEL)
+  ├── Phase 7: ADVANCED (SSRF + CachePoisoning + HTTPSmuggling + PrototypePollution — PARALLEL)
+  ├── Phase 8: API/PROTOCOL (GraphQL + WebSocket + API — PARALLEL, conditional)
+  ├── Phase 9: FILE HANDLING (FileUploadAgent, conditional)
+  └── Phase 10: REPORTING (aggregate, score, deduplicate, generate report)
+```
+
+Each phase has **gate conditions** — the workflow only advances when the gate criteria are met. Agents within a phase run in parallel for maximum speed.
+
+---
+
 ## Tool Chain
 
 | Tool | File | Purpose |
@@ -391,7 +437,7 @@ This means **90% less noise** and **10x faster confirmation**.
 | **Credential Vault** | `Tools/credential-vault.ts` | Encrypted credential storage, 1Password, env vars, auto-redact |
 | **Auth Manager** | `Tools/auth-manager.ts` | B2C/OAuth/SAML automation, session persistence, health checks |
 | **Burp Bridge** | `Tools/burp-bridge.ts` | Burp Suite REST API bridge — scope sync, HAR export, Collaborator |
-| **Playwright Harness** | `Tools/playwright-harness.ts` | Browser automation — crawling, AppProfile, DOM testing |
+| **Browser Harness** | `Tools/playwright-harness.ts` | Browser automation via dev-browser CLI (primary) / Playwright CLI (fallback) |
 | **Appium Harness** | `Tools/appium-harness.ts` | Mobile app testing — Android/iOS through proxy |
 
 ---

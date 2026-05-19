@@ -48,7 +48,7 @@ hunt <target> [--mode bounty|pentest|comprehensive]
      ├── credential-vault.ts (ENH-2: no more inline PII)
      ├── auth-manager.ts (ENH-4: B2C/SSO/OAuth automation)
      ├── burp-bridge.ts (ENH-6: verified Burp integration)
-     ├── playwright-harness.ts (crawling + dynamic testing)
+     ├── playwright-harness.ts (dev-browser CLI primary, Playwright CLI fallback)
      └── appium-harness.ts (mobile testing)
 ```
 
@@ -71,7 +71,7 @@ This creates:
   ├── hunt-state.json      # Phase states, findings, config
   ├── hunt-events.jsonl    # Phase transition log
   ├── auth-state.json      # Auth session persistence
-  ├── storage-state.json   # Playwright browser state
+  ├── storage-state.json   # Browser state (dev-browser / Playwright)
   ├── findings/            # Individual finding files
   ├── screenshots/         # Evidence screenshots
   └── artifacts/           # HAR files, Burp exports, etc.
@@ -226,7 +226,7 @@ bun burp-bridge.ts --health
 bun burp-bridge.ts --sync-scope --scope "*.example.com,api.example.com"
 ```
 
-If Burp is not available: log warning, continue with direct Playwright testing. Framework does not hard-fail without Burp.
+If Burp is not available: log warning, continue with direct dev-browser/Playwright testing. Framework does not hard-fail without Burp.
 
 ### 3C: Deploy AppReviewAgent
 
@@ -455,7 +455,7 @@ Each agent receives SPECIFIC hypothesis from AppProfile:
 
 ---
 
-## Phase 6: DYNAMIC_TEST — Burp + Playwright + Appium
+## Phase 6: DYNAMIC_TEST — Burp + dev-browser/Playwright + Appium
 
 ### 6A: Auth Health Check (ENH-4)
 
@@ -489,9 +489,9 @@ bun burp-bridge.ts --collaborator-poll --poll-interval 60000 --poll-max 30
 bun burp-bridge.ts --issues
 ```
 
-If Burp unavailable: continue with direct Playwright testing (graceful degradation).
+If Burp unavailable: continue with direct dev-browser/Playwright CLI testing (graceful degradation).
 
-### 6C: Playwright Dynamic Testing
+### 6C: Browser Dynamic Testing (dev-browser / Playwright CLI)
 
 ```bash
 bun playwright-harness.ts \
@@ -693,21 +693,35 @@ curl -s -X POST http://localhost:8888/notify \
 
 ## Workflow Router
 
-| Input | Track | Agents | Tools | Skills Invoked |
-|-------|-------|--------|-------|----------------|
-| Web app URL | Web | XSS+SQLi+SSRF+IDOR+Auth+CORS+FileUpload | Playwright+Burp+nuclei+sqlmap+ffuf | WebAssessment, Recon |
-| API endpoint/swagger | API | APIAgent+IDORAgent+AuthAgent | Burp+nuclei+ffuf | APISecurityTesting |
-| AI/LLM application | AI | LLMSecurityAgent+standard web agents | Playwright+Burp | PromptInjection, WebAssessment |
-| .apk file | Android | MobileAgent (android track) | Appium+Burp+apktool+frida | MobileSecurity |
-| .ipa file | iOS | MobileAgent (ios track) | Appium+Burp+objection+frida | MobileSecurity |
-| .apk with native .so | Android native | MobileAgent+ReverseEngineeringAgent | Ghidra+frida+ROPgadget | MobileSecurity, ExploitDev |
-| .ipa with native binary | iOS native | MobileAgent+ReverseEngineeringAgent | Ghidra+LLDB+frida | MobileSecurity, ExploitDev |
-| ELF/PE/Mach-O binary | Native binary | ReverseEngineeringAgent→ExploitDevAgent | Ghidra+r2+pwntools+LLDB | ExploitDev, VulnResearch |
-| Electron/desktop app | Desktop | DesktopAppAgent | asar+jadx+dnSpy | — |
-| .NET/Java application | Managed desktop | DesktopAppAgent+ReverseEngineeringAgent | dnSpy+jadx+ysoserial | ReverseEngineering |
-| Windows target | Windows | WindowsAgent+NetworkAgent | impacket+crackmapexec | NetworkSecurity |
-| Cloud target | Cloud | CloudAgent | Pacu+ScoutSuite | CloudSecurity |
-| Full program | All | All agents | All tools | SecurityHub routes |
+The orchestrator classifies the target and dispatches the appropriate workflow from `Workflows/`. Each workflow defines its own phases, agent dispatch order, parallelism, and gate conditions.
+
+| Input | Track | Workflow | Agents (28 total) | Tools | Skills Invoked |
+|-------|-------|----------|-------------------|-------|----------------|
+| Web app URL | Web | `W_HUNT_WEB` | AppReview+XSS+SQLi+SSRF+IDOR+Auth+CORS+CSRF+FileUpload+XXE+RCE+BusinessLogic+RaceCondition+CachePoisoning+HTTPSmuggling+PrototypePollution+SubdomainTakeover+GraphQL+WebSocket | dev-browser+Burp+nuclei+sqlmap+ffuf | WebAssessment, Recon |
+| API endpoint/swagger | API | `W_HUNT_API` | API+GraphQL+WebSocket+Auth+IDOR+SQLi+RCE+SSRF+RaceCondition+BusinessLogic | Burp+nuclei+ffuf+graphql-cop | APISecurityTesting |
+| AI/LLM application | AI | `W_HUNT_LLM` | LLMSecurity+AppReview+Auth+IDOR+SSRF+XSS+API+FileUpload | dev-browser+Burp+garak | PromptInjection, WebAssessment |
+| .apk file | Android | `W_HUNT_MOBILE` | Mobile+API+Auth+IDOR+ReverseEngineering+SSRF+SQLi | Appium+Burp+apktool+frida+objection | MobileSecurity |
+| .ipa file | iOS | `W_HUNT_MOBILE` | Mobile+API+Auth+IDOR+ReverseEngineering+SSRF+SQLi | Appium+Burp+objection+frida | MobileSecurity |
+| IP range/CIDR | Network | `W_HUNT_NETWORK` | Recon+Windows+Auth+RCE+ExploitDev | nmap+impacket+crackmapexec+BloodHound | NetworkSecurity |
+| Cloud account | Cloud | `W_HUNT_CLOUD` | Recon+Auth+RCE+SSRF+IDOR | Pacu+ScoutSuite+Prowler+CloudFox | CloudSecurity |
+| Electron/desktop app | Desktop | `W_HUNT_THICK_CLIENT` | DesktopApp+ReverseEngineering+Auth+API+SQLi+RCE | dnSpy+Ghidra+x64dbg+Burp | ReverseEngineering |
+| .NET/Java application | Managed | `W_HUNT_THICK_CLIENT` | DesktopApp+ReverseEngineering+Auth+API+SQLi+RCE | dnSpy+jadx+ysoserial+Burp | ReverseEngineering |
+| Recon-only request | Recon | `W_RECON` | Recon+SubdomainTakeover | subfinder+httpx+nuclei+gowitness | Recon, OSINT |
+| Full program | All | `W_HUNT_WEB` (primary) + supplemental workflows | All 28 agents | All tools | SecurityHub routes |
+
+### Workflow Files
+
+```
+Workflows/
+├── W_HUNT_WEB.md          # Comprehensive web application assessment (10 phases)
+├── W_HUNT_API.md          # REST/GraphQL/gRPC/WebSocket API assessment (9 phases)
+├── W_HUNT_LLM.md          # AI/LLM application assessment — OWASP LLM Top 10 (13 phases)
+├── W_HUNT_MOBILE.md       # Android/iOS mobile application assessment (10 phases)
+├── W_HUNT_NETWORK.md      # Network/infrastructure/AD assessment (9 phases)
+├── W_HUNT_CLOUD.md        # AWS/Azure/GCP cloud security assessment (10 phases)
+├── W_HUNT_THICK_CLIENT.md # Desktop/Electron/.NET/Java application assessment (10 phases)
+└── W_RECON.md             # Standalone reconnaissance and attack surface discovery (10 phases)
+```
 
 ---
 
@@ -741,7 +755,7 @@ curl -s -X POST http://localhost:8888/notify \
 | **Credential Vault** | `Tools/credential-vault.ts` | Secure credential storage, 1Password integration, auto-redaction |
 | **Auth Manager** | `Tools/auth-manager.ts` | B2C/SSO/OAuth automation, session persistence, auto-refresh |
 | **Burp Bridge** | `Tools/burp-bridge.ts` | Burp health check, scope sync, traffic export, Collaborator polling |
-| **Playwright Harness** | `Tools/playwright-harness.ts` | Web crawling, AppProfile generation, dynamic testing |
+| **Browser Harness** | `Tools/playwright-harness.ts` | Web crawling, AppProfile generation, dynamic testing (dev-browser primary, Playwright CLI fallback) |
 | **Appium Harness** | `Tools/appium-harness.ts` | Mobile app testing |
 
 ---
@@ -769,6 +783,14 @@ curl -s -X POST http://localhost:8888/notify \
 | **ReverseEngineeringAgent** | `Agents/ReverseEngineeringAgent.md` | Binary analysis |
 | **ExploitDevAgent** | `Agents/ExploitDevAgent.md` | Exploit development |
 | **DesktopAppAgent** | `Agents/DesktopAppAgent.md` | Desktop application testing |
+| **GraphQLAgent** | `Agents/GraphQLAgent.md` | GraphQL introspection, batch abuse, auth bypass, nested query DoS |
+| **WebSocketAgent** | `Agents/WebSocketAgent.md` | CSWSH, message injection, origin bypass, auth hijacking |
+| **CSRFAgent** | `Agents/CSRFAgent.md` | CSRF token bypass, SameSite bypass, content-type tricks |
+| **CachePoisoningAgent** | `Agents/CachePoisoningAgent.md` | Unkeyed header injection, cache deception, CDN bypass |
+| **HTTPSmugglingAgent** | `Agents/HTTPSmugglingAgent.md` | CL.TE, TE.CL, H2.CL desync, request splitting |
+| **SubdomainTakeoverAgent** | `Agents/SubdomainTakeoverAgent.md` | Dangling DNS, cloud service takeover, cookie scope impact |
+| **RaceConditionAgent** | `Agents/RaceConditionAgent.md` | Single-packet attack, limit bypass, double-spend, TOCTOU |
+| **PrototypePollutionAgent** | `Agents/PrototypePollutionAgent.md` | Client-side PP→XSS gadgets, server-side PP→RCE chains |
 
 ---
 
