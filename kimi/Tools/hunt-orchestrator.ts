@@ -6,11 +6,14 @@
 
 import { parseArgs } from "util";
 import { getSessionDir, SESSIONS_DIR } from "./lib/paths.ts";
+import { isInScope, loadScopeFromConfig, scopeSummary, type Scope } from "./lib/scope.ts";
+import { validateToolsForMode, writeToolReport, formatToolReport } from "./lib/tool-validator.ts";
 
 const { values: args } = parseArgs({
   args: Bun.argv.slice(2),
   options: {
     target: { type: "string" },
+    config: { type: "string" },
     mode: { type: "string", default: "bounty" },
     workflow: { type: "string" },
     resume: { type: "boolean", default: false },
@@ -20,6 +23,7 @@ const { values: args } = parseArgs({
     "add-finding": { type: "string" },
     reset: { type: "boolean", default: false },
     "scope-check": { type: "boolean", default: false },
+    "validate-tools": { type: "boolean", default: false },
     "set-phase-status": { type: "string" },
     reason: { type: "string" },
     data: { type: "string" },
@@ -72,6 +76,7 @@ export interface HuntState {
     maxRetries: number;
     targetFindingCount: number;
   };
+  scope?: Scope;
 }
 
 function toSlug(url: string): string {
@@ -113,7 +118,8 @@ export async function logEvent(slug: string, event: Record<string, unknown>) {
 export async function createHuntState(
   target: string,
   mode: HuntMode,
-  workflow?: string
+  workflow?: string,
+  scope?: Scope
 ): Promise<HuntState> {
   const slug = toSlug(target);
   const sessionDir = getSessionDir(slug);
@@ -155,6 +161,7 @@ export async function createHuntState(
     totalFindings: 0,
     findings: [],
     config: modeToConfig(mode),
+    scope,
   };
 
   await saveState(state);
@@ -287,6 +294,7 @@ export function getHuntStatus(state: HuntState): string {
   lines.push(`  HUNT STATUS: ${state.target}`);
   lines.push(`  Mode: ${state.mode.toUpperCase()} | Elapsed: ${elapsedMin}m | Findings: ${state.totalFindings}`);
   lines.push(`  Min CVSS: ${state.config.minCvss} | Target: ${state.config.targetFindingCount} findings`);
+  lines.push(`  Scope: ${scopeSummary(state.scope)}`);
   if (state.workflow) lines.push(`  Workflow: ${state.workflow}`);
   lines.push(`${"=".repeat(70)}`);
 
@@ -349,20 +357,51 @@ function printUsage(): void {
   console.log(`hunt-orchestrator — BugHunter AI state machine
 
 Usage:
-  hunt-orchestrator --target URL [--mode bounty|pentest|comprehensive] [--workflow NAME]
+  hunt-orchestrator --target URL [--mode bounty|pentest|comprehensive] [--workflow NAME] [--config path.json]
+  hunt-orchestrator --config path.json [--mode bounty|pentest|comprehensive] [--workflow NAME]
   hunt-orchestrator --target URL --resume
   hunt-orchestrator --target URL --status
   hunt-orchestrator --target URL --advance [PHASE]
   hunt-orchestrator --target URL --fail 'error message'
   hunt-orchestrator --target URL --add-finding '{"severity":"critical","type":"SSRF","title":"..."}'
   hunt-orchestrator --target URL --set-phase-status PHASE:STATUS [--reason '...'] [--data '...'] [--findings path.json]
-  hunt-orchestrator --target URL --scope-check
+  hunt-orchestrator --target URL --scope-check [--config path.json]
+  hunt-orchestrator --target URL --validate-tools
   hunt-orchestrator --status  (list all sessions)
   hunt-orchestrator --target URL --reset`);
 }
 
+function deriveTargetFromScope(scope: Scope): string | undefined {
+  // Prefer the first non-wildcard in-scope entry, otherwise strip a leading wildcard.
+  const candidate = scope.in.find((p) => !p.includes("*")) ?? scope.in[0];
+  if (!candidate) return undefined;
+  const host = candidate.replace(/^\*\.?/, "").replace(/\/.*$/, "");
+  return `https://${host}`;
+}
+
+async function resolveTargetAndScope(): Promise<{ target: string; scope?: Scope }> {
+  if (args.config) {
+    const scope = await loadScopeFromConfig(args.config);
+    const file = Bun.file(args.config);
+    const config = await file.json();
+    const target =
+      (args.target as string | undefined) ??
+      config.target ??
+      deriveTargetFromScope(scope);
+    if (!target) {
+      throw new Error("--config provided but no target could be derived. Pass --target or add 'target' to the config.");
+    }
+    return { target, scope };
+  }
+
+  if (!args.target) {
+    throw new Error("--target or --config is required");
+  }
+  return { target: args.target };
+}
+
 async function main() {
-  if (!args.target && !args.status) {
+  if (!args.target && !args.status && !args.config && !args["validate-tools"]) {
     printUsage();
     return;
   }
@@ -372,7 +411,14 @@ async function main() {
     return;
   }
 
-  const target = args.target!;
+  if (args["validate-tools"]) {
+    const mode = (args.mode || "bounty") as HuntMode;
+    const checks = await validateToolsForMode(mode);
+    console.log(formatToolReport(checks));
+    return;
+  }
+
+  const { target, scope } = await resolveTargetAndScope();
   const slug = toSlug(target);
 
   if (args.status) {
@@ -386,8 +432,11 @@ async function main() {
   }
 
   if (args["scope-check"]) {
-    console.log(`[SCOPE CHECK] ${target} — scope enforcement is configured via target profiles`);
-    return;
+    const checkScope = scope ?? (await loadState(slug))?.scope;
+    const result = isInScope(target, checkScope);
+    console.log(`[SCOPE CHECK] ${target}`);
+    console.log(`  ${result.reason}`);
+    process.exit(result.inScope ? 0 : 1);
   }
 
   if (args.resume) {
@@ -403,7 +452,7 @@ async function main() {
 
   if (args.reset) {
     const mode = (args.mode || "bounty") as HuntMode;
-    const state = await createHuntState(target, mode, args.workflow);
+    const state = await createHuntState(target, mode, args.workflow, scope);
     console.log(`[RESET] Hunt reset for ${target}`);
     console.log(getHuntStatus(state));
     return;
@@ -417,6 +466,21 @@ async function main() {
     }
     const toPhase = args.advance ? (args.advance as PhaseName) : undefined;
     const updated = await advancePhase(state, toPhase);
+
+    // Validate external tools when entering TARGET_INGEST.
+    if (updated.currentPhase === "TARGET_INGEST") {
+      const checks = await validateToolsForMode(updated.mode);
+      const reportPath = `${updated.sessionDir}/recon/tool-health.json`;
+      await writeToolReport(reportPath, checks);
+      console.log(formatToolReport(checks));
+      await logEvent(updated.targetSlug, {
+        event: "TOOLS_VALIDATED",
+        reportPath,
+        installed: checks.filter((c) => c.installed).length,
+        total: checks.length,
+      });
+    }
+
     console.log(`[ADVANCE] Now at phase: ${updated.currentPhase}`);
     return;
   }
@@ -462,7 +526,7 @@ async function main() {
     return;
   }
 
-  const state = await createHuntState(target, mode, args.workflow);
+  const state = await createHuntState(target, mode, args.workflow, scope);
   state.phases.INIT.status = "running";
   state.phases.INIT.startTime = new Date().toISOString();
   await saveState(state);

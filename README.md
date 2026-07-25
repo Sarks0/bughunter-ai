@@ -372,6 +372,42 @@ bun kimi/Tools/credential-vault.ts --rotate
 
 For testing only, an explicit `--plain` flag stores credentials with base64 encoding and emits a security warning.
 
+### Scope enforcement & HackerOne Burp import
+
+The Kimi port enforces scope from target config files. Out-of-scope patterns always take precedence.
+
+```bash
+# Check a target without starting a hunt
+bun kimi/Tools/hunt-orchestrator.ts --config examples/sample-target-config.json --target https://api.example.com --scope-check
+```
+
+Supported scope patterns:
+
+- `*.example.com` — any subdomain
+- `example.com` — exact host
+- `https://api.example.com/*` — URL globs
+- `/^.*\.example\.com$/` — regex literals
+
+Import a HackerOne Burp Suite Project Configuration JSON by referencing it in the config:
+
+```json
+{
+  "target": "https://api.example.com",
+  "scope_in": [],
+  "scope_out": [],
+  "burp_scope_file": "hackerone-burp-scope.json"
+}
+```
+
+### External tool validation
+
+The orchestrator validates the expected external toolchain when it enters `TARGET_INGEST` and writes a report to `<session>/recon/tool-health.json`. You can also validate standalone:
+
+```bash
+bun kimi/Tools/hunt-orchestrator.ts --validate-tools
+bun kimi/Tools/hunt-orchestrator.ts --validate-tools --mode pentest
+```
+
 ---
 
 ## Full Setup Guide

@@ -93,17 +93,21 @@ Also use Kimi's memory/retrieval to find prior findings for this target or tech 
 
 ### Scope enforcement
 
-Use the target config file (`kimi-data/TargetProfiles/{program}.json`) or inline scope. Reject anything out of scope.
+Scope is loaded from the target config file (`kimi-data/TargetProfiles/{program}.json`) and enforced by `kimi/Tools/lib/scope.ts`. Out-of-scope patterns take precedence. You can import a HackerOne Burp Suite Project Configuration JSON via the `burp_scope_file` field.
 
-```python
-def is_in_scope(target, scope_in, scope_out):
-    for oos in scope_out:
-        if fnmatch(target, oos):
-            return False, f"OUT OF SCOPE: {target} matches {oos}"
-    for ins in scope_in:
-        if fnmatch(target, ins):
-            return True, "IN SCOPE"
-    return False, f"NOT IN SCOPE: {target} not in scope list"
+```bash
+# Check a target before testing
+bun kimi/Tools/hunt-orchestrator.ts --config kimi-data/TargetProfiles/example-corp.json --target https://api.example.com --scope-check
+```
+
+Scope patterns support globs (`*.example.com`, `https://api.example.com/*`) and regex literals (`/^.*\.example\.com$/`).
+
+### Tool validation
+
+When the orchestrator enters `TARGET_INGEST`, it validates the external tools expected for the hunt mode and writes a health report to `<session>/recon/tool-health.json`. You can also run validation standalone:
+
+```bash
+bun kimi/Tools/hunt-orchestrator.ts --validate-tools --mode pentest
 ```
 
 ### Credential vault
