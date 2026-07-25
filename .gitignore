@@ -1,6 +1,12 @@
 # Dependencies
 node_modules/
+kimi/node_modules/
+kimi/bun.lockb
 bun.lockb
+
+# Kimi port build/output
+kimi/dist/
+kimi-data/
 
 # Credentials (NEVER commit)
 *.enc

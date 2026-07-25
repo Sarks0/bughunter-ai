@@ -309,6 +309,26 @@ For the **full setup with PAI, Superpowers, and all security skills**, see the [
 
 ---
 
+## Using with Kimi Code CLI
+
+This fork includes a Kimi Code CLI port in `kimi/`. It keeps the original Claude Code skill intact while adding Kimi-compatible tooling, paths, and prompts.
+
+```bash
+# Install Kimi port dependencies
+cd kimi
+bun install
+
+# From the repo root, run a hunt with the Kimi tools
+bun kimi/Tools/hunt-orchestrator.ts --target https://target.example.com --mode bounty
+
+# Or check status
+bun kimi/Tools/hunt-orchestrator.ts --target https://target.example.com --status
+```
+
+See `kimi/README.md` and `AGENTS.md` for the full Kimi setup and usage guide.
+
+---
+
 ## Full Setup Guide
 
 See **[SETUP.md](SETUP.md)** for the complete, step-by-step guide to replicate the full infrastructure:
