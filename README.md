@@ -311,21 +311,66 @@ For the **full setup with PAI, Superpowers, and all security skills**, see the [
 
 ## Using with Kimi Code CLI
 
-This fork includes a Kimi Code CLI port in `kimi/`. It keeps the original Claude Code skill intact while adding Kimi-compatible tooling, paths, and prompts.
+This fork includes a **Kimi Code CLI port** in `kimi/`. It keeps the original Claude Code skill in `skills/BugBountyFramework/` intact while adding a standalone, Kimi-compatible implementation.
+
+### What the port includes
+
+- **28 specialized agent prompts** in `kimi/Agents/`
+- **8 hunt workflows** as JSON definitions in `kimi/Workflows/`
+- **7 TypeScript tools** in `kimi/Tools/`:
+  - `hunt-orchestrator.ts` — state machine, resume, workflow selection
+  - `credential-vault.ts` — encrypted credential storage
+  - `auth-manager.ts` — authentication flow automation
+  - `burp-bridge.ts` — Burp Suite REST API integration
+  - `playwright-harness.ts` — browser automation and app profiling
+  - `appium-harness.ts` — mobile testing harness
+  - `generate-report.ts` — report generation from findings
+- **Unit tests** in `kimi/__tests__/` (run with `bun test`)
+- **Project-local runtime data** under `kimi-data/` instead of `~/.claude/MEMORY/`
+
+### Quick start
 
 ```bash
-# Install Kimi port dependencies
+# Install dependencies
 cd kimi
 bun install
 
-# From the repo root, run a hunt with the Kimi tools
+# Run a hunt from the repo root
 bun kimi/Tools/hunt-orchestrator.ts --target https://target.example.com --mode bounty
 
-# Or check status
+# Check status
 bun kimi/Tools/hunt-orchestrator.ts --target https://target.example.com --status
 ```
 
-See `kimi/README.md` and `AGENTS.md` for the full Kimi setup and usage guide.
+See `kimi/README.md`, `kimi/SETUP.md`, and `AGENTS.md` for the full Kimi setup and usage guide.
+
+### Secure credential vault
+
+The Kimi port stores credentials **encrypted by default** using **AES-256-GCM** with a key derived from your passphrase via PBKDF2 (100,000 iterations, SHA-256).
+
+Provide the passphrase via:
+
+1. `BH_VAULT_PASSPHRASE` environment variable (recommended for scripts)
+2. `--passphrase-file /path/to/passphrase.txt`
+3. `--passphrase "your-passphrase"` (not recommended — leaks to shell history)
+4. Interactive prompt (hides input with `*`)
+
+```bash
+export BH_VAULT_PASSPHRASE="a-strong-passphrase"
+
+bun kimi/Tools/credential-vault.ts --store --target example \
+  --username user@example.com --password "SuperSecret123!"
+
+bun kimi/Tools/credential-vault.ts --get --target example --field password
+```
+
+Rotate the vault passphrase at any time:
+
+```bash
+bun kimi/Tools/credential-vault.ts --rotate
+```
+
+For testing only, an explicit `--plain` flag stores credentials with base64 encoding and emits a security warning.
 
 ---
 
