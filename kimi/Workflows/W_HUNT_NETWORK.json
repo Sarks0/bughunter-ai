@@ -1,0 +1,11 @@
+{
+  "name": "W_HUNT_NETWORK",
+  "description": "Network/infrastructure/Active Directory assessment",
+  "trigger": "IP range, CIDR, or AD target",
+  "phases": [
+    { "name": "RECON", "blocking": true, "agents": ["ReconAgent"], "tools": ["nmap"], "gates": [{ "metric": "alive_hosts", "min": 1 }] },
+    { "name": "AUTH_TESTING", "blocking": false, "agents": ["WindowsAgent", "AuthAgent"], "tools": ["impacket"], "gates": [] },
+    { "name": "EXPLOITATION", "blocking": false, "agents": ["RCEAgent", "ExploitDevAgent"], "tools": ["nmap", "crackmapexec"], "gates": [], "max_concurrent_agents": 2 },
+    { "name": "REPORT", "blocking": true, "agents": [], "tools": ["generate-report"], "gates": [] }
+  ]
+}

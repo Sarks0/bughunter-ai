@@ -112,3 +112,7 @@ echo -e "     ${BOLD}Store creds for my-target: username admin@test.com, passwor
 echo ""
 echo -e "${YELLOW}${BOLD}Remember:${NC} Only test targets you have authorization to test."
 echo ""
+echo -e "${BOLD}Optional:${NC} To set up the MCP servers (Kimi + Claude), run:"
+echo -e "     ${BOLD}./scripts/setup-mcp.sh${NC}"
+echo -e "  (Not run automatically — it writes to your home directory and needs your consent.)"
+echo ""

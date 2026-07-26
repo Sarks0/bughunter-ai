@@ -1,0 +1,12 @@
+{
+  "name": "W_HUNT_CLOUD",
+  "description": "AWS/Azure/GCP cloud security assessment",
+  "trigger": "Cloud account or environment",
+  "phases": [
+    { "name": "RECON", "blocking": true, "agents": ["ReconAgent"], "tools": ["pacu", "scoutsuite"], "gates": [] },
+    { "name": "AUTH_TESTING", "blocking": false, "agents": ["AuthAgent"], "tools": [], "gates": [] },
+    { "name": "ACCESS_CONTROL", "blocking": false, "agents": ["IDORAgent", "SSRFAgent"], "tools": ["cloudfox"], "gates": [], "max_concurrent_agents": 2 },
+    { "name": "EXPLOITATION", "blocking": false, "agents": ["RCEAgent", "SSRFAgent"], "tools": ["pacu"], "gates": [], "max_concurrent_agents": 2 },
+    { "name": "REPORT", "blocking": true, "agents": [], "tools": ["generate-report"], "gates": [] }
+  ]
+}

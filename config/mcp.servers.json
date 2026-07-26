@@ -1,0 +1,43 @@
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-filesystem@2026.7.10",
+        "$BH_REPO_ROOT",
+        "$BH_PROJECTS_DIR"
+      ],
+      "enabled": true
+    },
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "bearerTokenEnvVar": "GITHUB_PERSONAL_ACCESS_TOKEN",
+      "enabled": false
+    },
+    "burp": {
+      "transport": "sse",
+      "url": "http://127.0.0.1:9876",
+      "enabled": false
+    },
+    "shodan": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@burtthecoder/mcp-shodan@1.0.22"
+      ],
+      "enabled": false
+    },
+    "virustotal": {
+      "command": "uvx",
+      "args": [
+        "gti_mcp"
+      ],
+      "enabled": false
+    },
+    "vuln-intel": {
+      "command": "$VULN_INTEL_BIN",
+      "enabled": true
+    }
+  }
+}

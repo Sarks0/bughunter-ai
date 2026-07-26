@@ -1,0 +1,13 @@
+{
+  "name": "W_HUNT_MOBILE",
+  "description": "Android/iOS mobile application assessment",
+  "trigger": "APK or IPA file path",
+  "phases": [
+    { "name": "TARGET_INGEST", "blocking": true, "agents": [], "tools": ["appium-harness"], "gates": [{ "metric": "apk_exists", "min": 1 }] },
+    { "name": "APP_UNDERSTANDING", "blocking": true, "agents": ["MobileAgent"], "tools": ["apktool"], "gates": [] },
+    { "name": "AUTH_TESTING", "blocking": false, "agents": ["AuthAgent"], "tools": ["burp-bridge"], "gates": [] },
+    { "name": "DYNAMIC_TEST", "blocking": false, "agents": ["MobileAgent", "APIAgent", "IDORAgent"], "tools": ["appium-harness"], "gates": [], "max_concurrent_agents": 3 },
+    { "name": "REVERSE_ENGINEERING", "blocking": false, "agents": ["ReverseEngineeringAgent"], "tools": ["jadx", "apktool"], "gates": [], "conditional": true },
+    { "name": "REPORT", "blocking": true, "agents": [], "tools": ["generate-report"], "gates": [] }
+  ]
+}

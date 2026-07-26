@@ -136,6 +136,16 @@ Claude Code's official `superpowers` plugin adds enhanced capabilities:
 
 ### MCP Servers (3 Core + 5 Recommended)
 
+> **Kimi port note:** the tables below describe the original Claude skill's architecture. In this fork the actual MCP configuration lives outside the repo:
+>
+> - **Kimi Code CLI:** `~/.kimi-code/mcp.json` (user level), format `{"mcpServers": {...}}`.
+> - **Claude Code:** user scope in `~/.claude.json`, managed via `claude mcp add/list` — do not hand-edit.
+> - **Burp integration:** primarily via `kimi/Tools/burp-bridge.ts` (REST against Burp's API); the official PortSwigger "MCP Server" BApp (SSE on `127.0.0.1:9876`) is the richer option and is wired as the `burp` server (disabled until the BApp is installed).
+>
+> Configured on this workstation: `filesystem` and `vuln-intel` are **enabled and keyless**; `github`, `shodan`, and `virustotal` are configured but **disabled pending API keys**; `burp` is **disabled pending the BApp install**. See the "MCP servers" section in `AGENTS.md` for env vars and enablement steps.
+>
+> **Fresh clones:** run `./scripts/setup-mcp.sh` to reproduce this configuration (idempotent; template in `config/mcp.servers.json`).
+
 **Core (Pre-configured):**
 | Server | Purpose |
 |--------|---------|
@@ -306,6 +316,108 @@ cd bughunter-ai
 ```
 
 For the **full setup with PAI, Superpowers, and all security skills**, see the [Full Setup Guide](SETUP.md).
+
+---
+
+## Using with Kimi Code CLI
+
+This fork includes a **Kimi Code CLI port** in `kimi/`. It keeps the original Claude Code skill in `skills/BugBountyFramework/` intact while adding a standalone, Kimi-compatible implementation.
+
+### What the port includes
+
+- **27 specialized agent prompts** in `kimi/Agents/`
+- **8 hunt workflows** as JSON definitions in `kimi/Workflows/`
+- **8 TypeScript tools** in `kimi/Tools/`:
+  - `hunt-orchestrator.ts` — state machine, resume, workflow selection
+  - `credential-vault.ts` — encrypted credential storage
+  - `auth-manager.ts` — authentication flow automation
+  - `burp-bridge.ts` — Burp Suite REST API integration
+  - `playwright-harness.ts` — browser automation and app profiling
+  - `appium-harness.ts` — mobile testing harness
+  - `generate-report.ts` — report generation from findings
+  - `validate-finding.ts` — finding validation (re-test before reporting)
+- **Unit tests** in `kimi/__tests__/` (run with `bun test`)
+- **Project-local runtime data** under `kimi-data/` instead of `~/.claude/MEMORY/`
+
+### Quick start
+
+```bash
+# Install dependencies
+cd kimi
+bun install
+
+# Run a hunt from the repo root
+bun kimi/Tools/hunt-orchestrator.ts --target https://target.example.com --mode bounty
+
+# Check status
+bun kimi/Tools/hunt-orchestrator.ts --target https://target.example.com --status
+```
+
+See `kimi/README.md`, `kimi/SETUP.md`, and `AGENTS.md` for the full Kimi setup and usage guide.
+
+### Secure credential vault
+
+The Kimi port stores credentials **encrypted by default** using **AES-256-GCM** with a key derived from your passphrase via PBKDF2 (210,000 iterations, SHA-256; legacy v1 vaults with 100,000 iterations remain readable).
+
+Provide the passphrase via (in order of precedence):
+
+1. `--passphrase "your-passphrase"` (not recommended — leaks to shell history)
+2. `--passphrase-file /path/to/passphrase.txt`
+3. `BH_VAULT_PASSPHRASE` environment variable (recommended for scripts)
+4. Interactive prompt (hides input with `*`)
+
+```bash
+export BH_VAULT_PASSPHRASE="a-strong-passphrase"
+
+bun kimi/Tools/credential-vault.ts --store --target example \
+  --username user@example.com --password "SuperSecret123!"
+
+bun kimi/Tools/credential-vault.ts --get --target example --field password
+```
+
+Rotate the vault passphrase at any time:
+
+```bash
+bun kimi/Tools/credential-vault.ts --rotate
+```
+
+For testing only, an explicit `--plain` flag stores credentials with base64 encoding and emits a security warning.
+
+### Scope enforcement & HackerOne Burp import
+
+The Kimi port enforces scope from target config files. Out-of-scope patterns always take precedence.
+
+```bash
+# Check a target without starting a hunt
+bun kimi/Tools/hunt-orchestrator.ts --config examples/sample-target-config.json --target https://api.example.com --scope-check
+```
+
+Supported scope patterns:
+
+- `*.example.com` — any subdomain
+- `example.com` — exact host
+- `https://api.example.com/*` — URL globs
+- `/^.*\.example\.com$/` — regex literals
+
+Import a HackerOne Burp Suite Project Configuration JSON by referencing it in the config:
+
+```json
+{
+  "target": "https://api.example.com",
+  "scope_in": [],
+  "scope_out": [],
+  "burp_scope_file": "hackerone-burp-scope.json"
+}
+```
+
+### External tool validation
+
+The orchestrator validates the expected external toolchain when it enters `TARGET_INGEST` and writes a report to `<session>/recon/tool-health.json`. You can also validate standalone:
+
+```bash
+bun kimi/Tools/hunt-orchestrator.ts --validate-tools
+bun kimi/Tools/hunt-orchestrator.ts --validate-tools --mode pentest
+```
 
 ---
 

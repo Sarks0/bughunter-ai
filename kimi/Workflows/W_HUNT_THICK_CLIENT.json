@@ -1,0 +1,12 @@
+{
+  "name": "W_HUNT_THICK_CLIENT",
+  "description": "Desktop/Electron/.NET/Java application assessment",
+  "trigger": "Desktop application binary or installer",
+  "phases": [
+    { "name": "TARGET_INGEST", "blocking": true, "agents": ["DesktopAppAgent"], "tools": ["dnspy", "ghidra"], "gates": [] },
+    { "name": "REVERSE_ENGINEERING", "blocking": false, "agents": ["ReverseEngineeringAgent"], "tools": ["ghidra", "x64dbg"], "gates": [] },
+    { "name": "AUTH_TESTING", "blocking": false, "agents": ["AuthAgent", "APIAgent"], "tools": ["burp-bridge"], "gates": [] },
+    { "name": "EXPLOITATION", "blocking": false, "agents": ["RCEAgent", "SQLiAgent"], "tools": [], "gates": [], "max_concurrent_agents": 2 },
+    { "name": "REPORT", "blocking": true, "agents": [], "tools": ["generate-report"], "gates": [] }
+  ]
+}

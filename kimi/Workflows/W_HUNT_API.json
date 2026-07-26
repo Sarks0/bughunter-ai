@@ -1,0 +1,15 @@
+{
+  "name": "W_HUNT_API",
+  "description": "REST/GraphQL/gRPC/WebSocket API assessment",
+  "trigger": "API endpoint, Swagger, or GraphQL URL",
+  "phases": [
+    { "name": "RECON", "blocking": true, "agents": ["ReconAgent"], "tools": ["httpx", "ffuf"], "gates": [{ "metric": "alive_urls", "min": 1 }] },
+    { "name": "APP_UNDERSTANDING", "blocking": true, "agents": ["AppReviewAgent", "APIAgent"], "tools": ["auth-manager"], "gates": [{ "metric": "app_profile_exists", "min": 1 }] },
+    { "name": "AUTH_TESTING", "blocking": false, "agents": ["AuthAgent"], "tools": ["burp-bridge"], "gates": [] },
+    { "name": "INJECTION", "blocking": false, "agents": ["SQLiAgent", "RCEAgent"], "tools": ["sqlmap"], "gates": [], "max_concurrent_agents": 2 },
+    { "name": "ACCESS_CONTROL", "blocking": false, "agents": ["IDORAgent", "CORSAgent"], "tools": [], "gates": [], "max_concurrent_agents": 2 },
+    { "name": "API_PROTOCOL", "blocking": false, "agents": ["APIAgent", "GraphQLAgent", "WebSocketAgent"], "tools": ["burp-bridge"], "gates": [], "max_concurrent_agents": 3 },
+    { "name": "BUSINESS_LOGIC", "blocking": false, "agents": ["BusinessLogicAgent", "RaceConditionAgent"], "tools": [], "gates": [], "max_concurrent_agents": 2 },
+    { "name": "REPORT", "blocking": true, "agents": [], "tools": ["generate-report"], "gates": [] }
+  ]
+}

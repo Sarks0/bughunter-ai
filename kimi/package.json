@@ -1,0 +1,20 @@
+{
+  "name": "bughunter-ai-kimi",
+  "version": "2.0.0-kimi.1",
+  "description": "Kimi Code CLI port of BugHunter AI — autonomous bug bounty hunting framework",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "playwright": "^1.45.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.5.0"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

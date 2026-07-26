@@ -1,0 +1,16 @@
+{
+  "name": "W_HUNT_LLM",
+  "description": "AI/LLM application assessment — OWASP LLM Top 10",
+  "trigger": "AI/LLM app URL or chatbot",
+  "phases": [
+    { "name": "RECON", "blocking": true, "agents": ["ReconAgent"], "tools": ["httpx"], "gates": [{ "metric": "alive_urls", "min": 1 }] },
+    { "name": "APP_UNDERSTANDING", "blocking": true, "agents": ["AppReviewAgent", "LLMSecurityAgent"], "tools": ["auth-manager", "playwright-harness"], "gates": [{ "metric": "app_profile_exists", "min": 1 }] },
+    { "name": "AUTH_TESTING", "blocking": false, "agents": ["AuthAgent", "IDORAgent"], "tools": [], "gates": [] },
+    { "name": "LLM_SECURITY", "blocking": false, "agents": ["LLMSecurityAgent"], "tools": ["playwright-harness"], "gates": [] },
+    { "name": "INJECTION", "blocking": false, "agents": ["XSSAgent", "SSRFAgent", "RCEAgent"], "tools": [], "gates": [], "max_concurrent_agents": 3 },
+    { "name": "ACCESS_CONTROL", "blocking": false, "agents": ["IDORAgent"], "tools": [], "gates": [] },
+    { "name": "FILE_HANDLING", "blocking": false, "agents": ["FileUploadAgent"], "tools": [], "gates": [], "conditional": true },
+    { "name": "VALIDATION", "blocking": true, "agents": [], "tools": ["validate-finding"], "gates": [] },
+    { "name": "REPORT", "blocking": true, "agents": [], "tools": ["generate-report"], "gates": [] }
+  ]
+}

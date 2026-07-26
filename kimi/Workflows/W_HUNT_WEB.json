@@ -1,0 +1,84 @@
+{
+  "name": "W_HUNT_WEB",
+  "description": "Comprehensive web application security assessment",
+  "trigger": "HTTP/HTTPS URL",
+  "phases": [
+    {
+      "name": "RECON",
+      "blocking": true,
+      "agents": ["ReconAgent"],
+      "tools": ["subfinder", "httpx", "naabu", "gau", "waybackurls", "ffuf"],
+      "gates": [{ "metric": "live_hosts", "min": 1 }]
+    },
+    {
+      "name": "APP_UNDERSTANDING",
+      "blocking": true,
+      "agents": ["AppReviewAgent"],
+      "tools": ["auth-manager", "playwright-harness"],
+      "gates": [{ "metric": "app_profile_exists", "min": 1 }]
+    },
+    {
+      "name": "AUTH_TESTING",
+      "blocking": false,
+      "agents": ["AuthAgent"],
+      "tools": ["burp-bridge"],
+      "gates": []
+    },
+    {
+      "name": "INJECTION",
+      "blocking": false,
+      "agents": ["SQLiAgent", "XSSAgent", "XXEAgent", "RCEAgent"],
+      "tools": ["sqlmap", "dalfox"],
+      "gates": [],
+      "max_concurrent_agents": 4
+    },
+    {
+      "name": "ACCESS_CONTROL",
+      "blocking": false,
+      "agents": ["IDORAgent", "CORSAgent", "CSRFAgent"],
+      "tools": ["burp-bridge"],
+      "gates": [],
+      "max_concurrent_agents": 3
+    },
+    {
+      "name": "BUSINESS_LOGIC",
+      "blocking": false,
+      "agents": ["BusinessLogicAgent", "RaceConditionAgent"],
+      "tools": ["playwright-harness"],
+      "gates": [],
+      "max_concurrent_agents": 2
+    },
+    {
+      "name": "ADVANCED",
+      "blocking": false,
+      "agents": ["SSRFAgent", "CachePoisoningAgent", "HTTPSmugglingAgent", "PrototypePollutionAgent"],
+      "tools": ["burp-bridge"],
+      "gates": [],
+      "max_concurrent_agents": 4
+    },
+    {
+      "name": "API_PROTOCOL",
+      "blocking": false,
+      "agents": ["GraphQLAgent", "WebSocketAgent", "APIAgent"],
+      "tools": ["burp-bridge"],
+      "gates": [],
+      "max_concurrent_agents": 3,
+      "conditional": true
+    },
+    {
+      "name": "FILE_HANDLING",
+      "blocking": false,
+      "agents": ["FileUploadAgent"],
+      "tools": ["playwright-harness"],
+      "gates": [],
+      "conditional": true
+    },
+    {
+      "name": "REPORT",
+      "blocking": true,
+      "agents": [],
+      "tools": ["generate-report"],
+      "gates": []
+    }
+  ]
+}
