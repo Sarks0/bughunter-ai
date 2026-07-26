@@ -136,6 +136,16 @@ Claude Code's official `superpowers` plugin adds enhanced capabilities:
 
 ### MCP Servers (3 Core + 5 Recommended)
 
+> **Kimi port note:** the tables below describe the original Claude skill's architecture. In this fork the actual MCP configuration lives outside the repo:
+>
+> - **Kimi Code CLI:** `~/.kimi-code/mcp.json` (user level), format `{"mcpServers": {...}}`.
+> - **Claude Code:** user scope in `~/.claude.json`, managed via `claude mcp add/list` — do not hand-edit.
+> - **Burp integration:** primarily via `kimi/Tools/burp-bridge.ts` (REST against Burp's API); the official PortSwigger "MCP Server" BApp (SSE on `127.0.0.1:9876`) is the richer option and is wired as the `burp` server (disabled until the BApp is installed).
+>
+> Configured on this workstation: `filesystem` and `vuln-intel` are **enabled and keyless**; `github`, `shodan`, and `virustotal` are configured but **disabled pending API keys**; `burp` is **disabled pending the BApp install**. See the "MCP servers" section in `AGENTS.md` for env vars and enablement steps.
+>
+> **Fresh clones:** run `./scripts/setup-mcp.sh` to reproduce this configuration (idempotent; template in `config/mcp.servers.json`).
+
 **Core (Pre-configured):**
 | Server | Purpose |
 |--------|---------|
