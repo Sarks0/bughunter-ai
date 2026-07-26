@@ -13,7 +13,10 @@ import { parseArgs } from "util";
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import { DATA_DIR, getSessionDir, toSlug } from "./lib/paths.ts";
 import { assertInScope, isInScope, loadScopeFromConfig, scopeSummary, type Scope } from "./lib/scope.ts";
+import { parseExtraHeaders } from "./lib/headers.ts";
 import type { Finding } from "./lib/finding.ts";
+
+export { parseExtraHeaders };
 
 export interface HarnessConfig {
   target?: string;
@@ -31,6 +34,8 @@ export interface HarnessConfig {
   maxPages: number;
   /** Chromium sandbox is ON by default; --no-sandbox opts out (needed as root). */
   noSandbox: boolean;
+  /** Extra HTTP headers (--header "Name: value") applied to every browser context. */
+  extraHeaders: Record<string, string>;
   /** Path to a target-config JSON; when set, crawl/scan URLs are scope-checked. */
   scopeConfig?: string;
   scope?: Scope;
@@ -51,6 +56,7 @@ export const harnessConfig: HarnessConfig = {
   headless: true,
   maxPages: 60,
   noSandbox: false,
+  extraHeaders: {},
 };
 
 interface FormField {
@@ -123,6 +129,18 @@ export function isSameOrigin(url: string, baseUrl: string): boolean {
   }
 }
 
+/**
+ * True when a navigation landed somewhere it shouldn't: outside the
+ * configured scope, or (with no scope configured) off the target origin.
+ * Checked after every page.goto() — cross-origin redirects (e.g. to an
+ * SSO provider) must never be crawled or tested.
+ */
+export function isOffScopeNavigation(finalUrl: string, baseUrl: string, scope?: Scope): boolean {
+  if (!finalUrl || finalUrl === "about:blank") return false;
+  if (scope) return !isInScope(finalUrl, scope).inScope;
+  return !isSameOrigin(finalUrl, baseUrl);
+}
+
 /** True when a URL may be crawled: same origin, and in scope when a scope is configured. */
 function isCrawlable(url: string, baseUrl: string): boolean {
   if (!isSameOrigin(url, baseUrl)) return false;
@@ -139,7 +157,7 @@ async function createBrowser(): Promise<Browser> {
 }
 
 async function createContext(browser: Browser): Promise<BrowserContext> {
-  const extraHeaders: Record<string, string> = {};
+  const extraHeaders: Record<string, string> = { ...harnessConfig.extraHeaders };
   if (harnessConfig.authToken) extraHeaders.Authorization = `Bearer ${harnessConfig.authToken}`;
 
   const context = await browser.newContext({
@@ -193,6 +211,14 @@ async function crawl(baseUrl: string, context: BrowserContext): Promise<{ urls: 
     const page = await context.newPage();
     try {
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
+
+      // Block cross-origin redirects (e.g. to an SSO provider): never crawl
+      // or analyze a page that landed outside scope / off the target origin.
+      const finalUrl = page.url();
+      if (isOffScopeNavigation(finalUrl, baseUrl, harnessConfig.scope)) {
+        console.error(`[!] Skipping off-scope redirect: ${url} -> ${finalUrl}`);
+        continue;
+      }
       urls.push(url);
 
       const title = await page.title().catch(() => "");
@@ -228,7 +254,9 @@ async function crawl(baseUrl: string, context: BrowserContext): Promise<{ urls: 
 
         for (const link of links) {
           try {
-            const full = new URL(link, baseUrl).href;
+            // Resolve against the page's actual (post-redirect) URL, not the
+            // configured target, so links are attributed to the real origin.
+            const full = new URL(link, finalUrl).href;
             if (isCrawlable(full, baseUrl) && !visited.has(full)) queue.push({ url: full, depth: depth + 1 });
           } catch {
             // ignore invalid URLs
@@ -329,6 +357,12 @@ async function detectTechStack(
 
   try {
     await page.goto(baseUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
+    const finalUrl = page.url();
+    if (isOffScopeNavigation(finalUrl, baseUrl, harnessConfig.scope)) {
+      console.error(`[!] Tech detection skipped: ${baseUrl} redirected off-scope -> ${finalUrl}`);
+      signals.redirect = `off-scope: ${new URL(finalUrl).origin}`;
+      return { signals, aiFeatures };
+    }
     const src = await page.innerHTML("html");
 
     if (/amazonaws\.com|aws\.|cloudfront\.net/.test(src)) cloudProvider = "AWS";
@@ -423,6 +457,11 @@ async function testXSS(url: string, context: BrowserContext, screenshotsDir: str
   const page = await context.newPage();
   try {
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 15000 });
+    const finalUrl = page.url();
+    if (isOffScopeNavigation(finalUrl, url, harnessConfig.scope)) {
+      console.error(`[!] XSS test skipped: ${url} redirected off-scope -> ${finalUrl}`);
+      return findings;
+    }
     const forms = await page.$$eval("form", (fs) => fs.length);
 
     for (let fi = 0; fi < forms; fi++) {
@@ -483,6 +522,10 @@ async function testAuthBypass(protectedUrls: string[], context: BrowserContext):
         const response = await page.goto(url, { timeout: 10000, waitUntil: "domcontentloaded" });
         const status = response?.status() ?? 0;
         const finalUrl = page.url();
+        if (isOffScopeNavigation(finalUrl, url, harnessConfig.scope)) {
+          console.error(`[!] Auth-bypass test skipped: ${url} redirected off-scope -> ${finalUrl}`);
+          continue;
+        }
         const body = (await page.textContent("body")) || "";
         if (!PROTECTED_KEYWORDS.test(body)) continue;
 
@@ -540,7 +583,12 @@ async function testIdor(urls: string[], authContext: BrowserContext, browser: Br
   const parameterized = urls.filter((u) => /[?&][^=]+=[^&]+/.test(u) || /\/\d+(?:\/|$)/.test(u));
   if (parameterized.length === 0) return findings;
 
-  const unauthContext = await browser.newContext({ ignoreHTTPSErrors: true });
+  // The unauthenticated context still carries --header extras (e.g. a
+  // deployment-protection bypass) so its requests reach the real app.
+  const unauthContext = await browser.newContext({
+    ignoreHTTPSErrors: true,
+    extraHTTPHeaders: Object.keys(harnessConfig.extraHeaders).length > 0 ? { ...harnessConfig.extraHeaders } : undefined,
+  });
   try {
     for (const url of parameterized.slice(0, 30)) {
       try {
@@ -622,6 +670,10 @@ async function main() {
       // Optional target-config JSON; when set, the target is asserted in scope
       // and crawled links outside scope are skipped.
       "scope-config": { type: "string" },
+      // Repeatable extra header applied to every browser context, e.g.
+      // --header "x-vercel-protection-bypass: <secret>". Values may contain
+      // colons; the split happens on the first one.
+      header: { type: "string", multiple: true },
     },
   });
 
@@ -640,6 +692,15 @@ async function main() {
   harnessConfig.maxPages = Number(args["max-pages"]) || 60;
   harnessConfig.noSandbox = args["no-sandbox"];
   harnessConfig.scopeConfig = args["scope-config"];
+  try {
+    harnessConfig.extraHeaders = parseExtraHeaders(args.header ?? []);
+  } catch (err) {
+    console.error(`[*] Fatal: ${(err as Error).message}`);
+    process.exit(1);
+  }
+  if (Object.keys(harnessConfig.extraHeaders).length > 0) {
+    console.log(`[*] Extra headers: ${Object.keys(harnessConfig.extraHeaders).join(", ")} (values redacted)`);
+  }
 
   if (!harnessConfig.target) {
     console.error("Usage: bun playwright-harness.ts --target https://example.com [options]");

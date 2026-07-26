@@ -51,6 +51,20 @@ describe("isInScope", () => {
     const result = isInScope("https://anything.com/", undefined);
     expect(result.inScope).toBe(true);
   });
+
+  it("applies out-of-scope precedence to WHATWG-unparseable hosts (label.ipv4), slash or not", () => {
+    // `new URL("http://admin.127.0.0.1")` throws (broken IPv4) — the host must
+    // still be extracted deterministically so scope_out wins either way.
+    const scope: Scope = { in: ["127.0.0.1", "*.127.0.0.1"], out: ["admin.127.0.0.1"] };
+    for (const target of ["http://admin.127.0.0.1", "http://admin.127.0.0.1/", "http://admin.127.0.0.1/x?y=1"]) {
+      const result = isInScope(target, scope);
+      expect(result.inScope).toBe(false);
+      expect(result.reason).toContain("OUT OF SCOPE");
+    }
+    // Sibling in-scope host still resolves the same with or without a slash.
+    expect(isInScope("http://app.127.0.0.1", scope).inScope).toBe(true);
+    expect(isInScope("http://app.127.0.0.1/", scope).inScope).toBe(true);
+  });
 });
 
 describe("parseBurpScope", () => {

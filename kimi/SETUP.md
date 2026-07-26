@@ -74,6 +74,35 @@ bun run lint
 
 Both should pass.
 
+## MCP servers (optional)
+
+Run `./scripts/setup-mcp.sh` from the repo root to configure the six canonical
+MCP servers for both Kimi Code CLI and Claude Code. It is idempotent and safe
+to re-run:
+
+- Merges `config/mcp.servers.json` into `~/.kimi-code/mcp.json` (backing up any
+  existing config first; unrelated entries are preserved).
+- Registers the same servers with `claude mcp add-json --scope user` when the
+  `claude` CLI is present (existing entries are left untouched).
+- Installs the `vuln-intel` server (`vulnerability-intelligence-mcp`) into a
+  venv under `~/venvs/vulnerability-intelligence-mcp` (override with
+  `VULN_INTEL_HOME`; skip with `--skip-vuln-intel`).
+- Flags: `--kimi-only`, `--claude-only`, `--skip-vuln-intel`, `--help`.
+
+Post-install steps (the script prints a summary):
+
+- `filesystem` and `vuln-intel` are enabled and keyless — nothing to do.
+- To activate key-gated servers, export the key in `~/.zshrc` and set
+  `"enabled": true` for that server in `~/.kimi-code/mcp.json`:
+  - `github`: `GITHUB_PERSONAL_ACCESS_TOKEN`
+  - `shodan`: `SHODAN_API_KEY`
+  - `virustotal`: `VT_APIKEY` (a free VT key works)
+  - `vuln-intel`: optional `NIST_NVD_API_KEY` raises NVD rate limits
+- `burp`: install the official PortSwigger **MCP Server** BApp (Extensions →
+  BApp Store → MCP Server, then enable under Extensions → MCP). It serves SSE
+  on `127.0.0.1:9876` — that port is unauthenticated localhost, so only enable
+  it while testing.
+
 ## Run your first hunt
 
 ```bash

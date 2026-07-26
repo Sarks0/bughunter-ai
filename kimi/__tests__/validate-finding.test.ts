@@ -15,6 +15,7 @@ import {
   injectPayloadIntoUrl,
   loadSessionAuth,
   oobEvidenceVerdict,
+  parseExtraHeaders,
   runValidation,
   validateFinding,
   type ValidationContext,
@@ -70,6 +71,12 @@ beforeAll(() => {
           return authed
             ? new Response("INVOICE #42 — CONFIDENTIAL customer data")
             : new Response("Unauthorized", { status: 401 });
+        case "/gated":
+          // Only reveals its marker when the gate header is present — used to
+          // prove extraHeaders are merged into outgoing requests.
+          return req.headers.get("x-bh-gate") === "open"
+            ? html("<div>GATED-CANARY</div>")
+            : new Response("Unauthorized", { status: 401 });
         default:
           return new Response("not found", { status: 404 });
       }
@@ -96,6 +103,7 @@ function testConfig(overrides: Partial<ValidatorConfig> = {}): ValidatorConfig {
     noSandbox: true,
     headless: true,
     requestDelayMs: 0,
+    extraHeaders: {},
     ...overrides,
   };
 }
@@ -665,5 +673,49 @@ describe("validate-finding CLI", () => {
     const { exitCode, stderr } = await runCli([]);
     expect(exitCode).toBe(1);
     expect(stderr).toMatch(/Usage/);
+  });
+
+  it("exits non-zero on a malformed --header", async () => {
+    const findingsPath = await writeFixture("input.json", [generic("a", `${base}/echo?q=CANARY123`)]);
+    const { exitCode, stderr } = await runCli([
+      "--findings", findingsPath,
+      "--target", base,
+      "--output", join(tmpDir, "out.json"),
+      "--no-browser",
+      "--header", "no-colon-here",
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toMatch(/Malformed --header/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// --header flag
+// ---------------------------------------------------------------------------
+
+describe("validate-finding --header parsing", () => {
+  it("splits name/value on the FIRST colon (values may contain colons)", () => {
+    expect(parseExtraHeaders(["Authorization: Bearer eyJ:a:b"])).toEqual({ Authorization: "Bearer eyJ:a:b" });
+  });
+
+  it("accepts multiple headers and trims whitespace", () => {
+    expect(parseExtraHeaders(["X-One: 1", " X-Two : two "])).toEqual({ "X-One": "1", "X-Two": "two" });
+  });
+
+  it("rejects entries without a colon, empty names, and empty values", () => {
+    expect(() => parseExtraHeaders(["no-colon-here"])).toThrow(/missing colon/);
+    expect(() => parseExtraHeaders([": value"])).toThrow(/name is empty/);
+    expect(() => parseExtraHeaders(["X-Empty:"])).toThrow(/empty/);
+  });
+});
+
+describe("validate-finding extraHeaders on the wire", () => {
+  it("merges extraHeaders into outgoing requests (generic strategy)", async () => {
+    const f = finding({ title: "Gated token exposed", url: `${base}/gated`, poc: "GATED-CANARY" });
+    const withHeader = await validateFinding(f, makeCtx({ config: testConfig({ extraHeaders: { "x-bh-gate": "open" } }) }));
+    expect(withHeader.validation_status).toBe("validated");
+
+    const withoutHeader = await validateFinding(f, makeCtx());
+    expect(withoutHeader.validation_status).toBe("refuted");
   });
 });

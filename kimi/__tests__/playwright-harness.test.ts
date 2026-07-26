@@ -1,5 +1,6 @@
 import { describe, it, expect } from "bun:test";
-import { isSameOrigin, detectAiFeatures } from "../Tools/playwright-harness.ts";
+import { isSameOrigin, isOffScopeNavigation, detectAiFeatures, parseExtraHeaders } from "../Tools/playwright-harness.ts";
+import type { Scope } from "../Tools/lib/scope.ts";
 
 describe("playwright-harness isSameOrigin", () => {
   it("accepts URLs on the same origin", () => {
@@ -20,6 +21,34 @@ describe("playwright-harness isSameOrigin", () => {
   });
 });
 
+describe("playwright-harness isOffScopeNavigation", () => {
+  const scope: Scope = { in: ["dev.example.com"], out: [] };
+
+  it("flags cross-origin redirects (SSO wall scenario)", () => {
+    // dev.example.com 302 -> vercel.com/sso-api must be treated as off-scope
+    expect(isOffScopeNavigation("https://vercel.com/sso-api?url=x", "https://dev.example.com/new", scope)).toBe(true);
+  });
+
+  it("allows same-origin landings", () => {
+    expect(isOffScopeNavigation("https://dev.example.com/dashboard", "https://dev.example.com/new", scope)).toBe(false);
+  });
+
+  it("respects scope_out even on the same registrable domain", () => {
+    const s: Scope = { in: ["*.example.com"], out: ["admin.example.com"] };
+    expect(isOffScopeNavigation("https://admin.example.com/panel", "https://example.com", s)).toBe(true);
+    expect(isOffScopeNavigation("https://app.example.com/", "https://example.com", s)).toBe(false);
+  });
+
+  it("falls back to origin comparison when no scope is configured", () => {
+    expect(isOffScopeNavigation("https://evil.com/x", "https://example.com")).toBe(true);
+    expect(isOffScopeNavigation("https://example.com/x", "https://example.com")).toBe(false);
+  });
+
+  it("ignores about:blank", () => {
+    expect(isOffScopeNavigation("about:blank", "https://example.com", scope)).toBe(false);
+  });
+});
+
 describe("playwright-harness detectAiFeatures", () => {
   it("detects LLM endpoint and provider signatures", () => {
     const html = `<script src="https://cdn.example.com/openai-sdk.js"></script>
@@ -36,5 +65,28 @@ describe("playwright-harness detectAiFeatures", () => {
 
   it("returns an empty list for plain pages", () => {
     expect(detectAiFeatures("<html><body>Hello world</body></html>")).toEqual([]);
+  });
+});
+
+describe("playwright-harness --header parsing", () => {
+  it("splits name/value on the FIRST colon (values may contain colons)", () => {
+    expect(parseExtraHeaders(["Authorization: Bearer eyJ:a:b"])).toEqual({ Authorization: "Bearer eyJ:a:b" });
+  });
+
+  it("accepts multiple headers and trims whitespace", () => {
+    expect(parseExtraHeaders(["X-One: 1", " X-Two : two "])).toEqual({ "X-One": "1", "X-Two": "two" });
+  });
+
+  it("rejects entries without a colon", () => {
+    expect(() => parseExtraHeaders(["no-colon-here"])).toThrow(/missing colon/);
+  });
+
+  it("rejects empty names and empty values", () => {
+    expect(() => parseExtraHeaders([": value"])).toThrow(/name is empty/);
+    expect(() => parseExtraHeaders(["X-Empty:"])).toThrow(/empty/);
+  });
+
+  it("lets a later entry overwrite an earlier one case-insensitively", () => {
+    expect(parseExtraHeaders(["x-token: old", "X-Token: new"])).toEqual({ "X-Token": "new" });
   });
 });

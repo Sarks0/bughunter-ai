@@ -269,6 +269,9 @@ export async function advancePhase(state: HuntState, toPhase?: string): Promise<
   const phaseList = getPhaseList(state);
   const currentIdx = phaseList.indexOf(state.currentPhase);
   const currentPhaseState = state.phases[state.currentPhase];
+  if (!currentPhaseState) {
+    throw new Error(`Current phase "${state.currentPhase}" not found in hunt state (stale or corrupt session).`);
+  }
 
   // A phase that already failed (via failPhase) keeps its "failed" status;
   // advancePhase only completes phases that are still running/pending.
@@ -284,7 +287,7 @@ export async function advancePhase(state: HuntState, toPhase?: string): Promise<
     if (nextIdx === -1) throw new Error(`Unknown phase: ${toPhase}. Valid phases: ${phaseList.join(", ")}`);
   } else {
     nextIdx = currentIdx + 1;
-    while (nextIdx < phaseList.length && state.phases[phaseList[nextIdx]].status === "skipped") {
+    while (nextIdx < phaseList.length && state.phases[phaseList[nextIdx]]?.status === "skipped") {
       nextIdx++;
     }
   }
@@ -297,9 +300,13 @@ export async function advancePhase(state: HuntState, toPhase?: string): Promise<
   }
 
   const nextPhase = phaseList[nextIdx];
+  const nextPhaseState = state.phases[nextPhase];
+  if (!nextPhaseState) {
+    throw new Error(`Phase "${nextPhase}" not found in hunt state (stale or corrupt session).`);
+  }
   state.currentPhase = nextPhase;
-  state.phases[nextPhase].status = "running";
-  state.phases[nextPhase].startTime = new Date().toISOString();
+  nextPhaseState.status = "running";
+  nextPhaseState.startTime = new Date().toISOString();
 
   await logEvent(state.targetSlug, { event: "PHASE_ADVANCE", from: phaseList[currentIdx], to: nextPhase });
   await saveState(state);
@@ -338,6 +345,10 @@ export async function setPhaseStatus(
   findingsPath?: string
 ): Promise<HuntState> {
   const phaseState = state.phases[phase];
+  if (!phaseState) {
+    const known = Object.keys(state.phases).join(", ");
+    throw new Error(`Unknown phase "${phase}" for this hunt's workflow. Known phases: ${known}`);
+  }
   phaseState.status = status;
   phaseState.endTime = new Date().toISOString();
   phaseState.error = reason ?? null;
@@ -749,5 +760,10 @@ async function main() {
 }
 
 if (import.meta.main) {
-  main().catch(console.error);
+  // All user-facing failures (scope refusal, unknown workflow, unresolvable
+  // target) funnel through here: one clean line on stderr, exit 1.
+  main().catch((err) => {
+    console.error(`[HUNT] ERROR: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  });
 }

@@ -14,6 +14,8 @@ import {
 } from "../Tools/hunt-orchestrator.ts";
 import { getSessionDir, toSlug, MEMORY_DIR } from "../Tools/lib/paths.ts";
 import { join } from "node:path";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 const TEST_TARGET = "https://test.example.com";
 const TEST_SLUG = "test-example-com";
@@ -90,6 +92,13 @@ describe("hunt-orchestrator", () => {
     state = await setPhaseStatus(state, "INIT", "completed", "Started successfully");
     expect(state.phases.INIT.status).toBe("completed");
     expect(state.phases.INIT.error).toBe("Started successfully");
+  });
+
+  it("setPhaseStatus rejects unknown phases with a clear error (no undefined deref)", async () => {
+    const state = await createHuntState(TEST_TARGET, "bounty");
+    await expect(setPhaseStatus(state, "NOPE_PHASE", "completed")).rejects.toThrow(
+      /Unknown phase "NOPE_PHASE".*Known phases:/
+    );
   });
 
   it("slug matches the canonical paths.toSlug (https://example.com/ → example-com)", async () => {
@@ -280,5 +289,41 @@ describe("workflow gates", () => {
     const result = await checkPhaseGates(state, "RECON");
     expect(result.ok).toBe(false);
     expect(result.unevaluable).toEqual(["no_such_metric"]);
+  });
+});
+
+describe("hunt-orchestrator CLI error handling", () => {
+  const CLI = join(import.meta.dir, "..", "Tools", "hunt-orchestrator.ts");
+
+  function runCli(argv: string[]) {
+    const proc = Bun.spawnSync([process.execPath, CLI, ...argv], {
+      cwd: join(import.meta.dir, ".."),
+    });
+    return {
+      exitCode: proc.exitCode,
+      stdout: proc.stdout.toString(),
+      stderr: proc.stderr.toString(),
+    };
+  }
+
+  it("scope refusal exits 1 with a clean one-line error (no stack trace)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bh-orch-test-"));
+    try {
+      const config = join(dir, "target-config.json");
+      await Bun.write(config, JSON.stringify({ scope_in: ["127.0.0.1"], scope_out: [] }));
+      const { exitCode, stderr } = runCli(["--target", "http://evil.example.com", "--config", config]);
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain("[HUNT] ERROR: Refusing to create hunt: NOT IN SCOPE");
+      expect(stderr).not.toContain("at createHuntState");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("unknown workflow exits 1 with a clean one-line error", () => {
+    const { exitCode, stderr } = runCli(["--target", "http://wf-test.example.com", "--workflow", "W_NOPE"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain('[HUNT] ERROR: Unknown workflow "W_NOPE"');
+    expect(stderr).not.toContain("at ");
   });
 });

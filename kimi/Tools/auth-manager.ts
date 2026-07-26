@@ -466,6 +466,14 @@ Options:
 
   if (args.check) {
     const state = await loadAuthState(args.target!);
+    const hasStorageState = await Bun.file(getStorageStatePath(args.target!)).exists();
+    const hasExplicitCreds = Boolean(args.cookie || args.token);
+    if (!state && !hasStorageState && !hasExplicitCreds) {
+      console.log(
+        `[AUTH CHECK] No stored session for ${args.target} — run --authenticate first or pass --cookie/--token`
+      );
+      process.exit(1);
+    }
     const valid = await isSessionValid(args.target!, cookieHeaderFromState(state));
     console.log(`[AUTH CHECK] Session valid: ${valid}`);
     if (state?.tokenExpiry) {
@@ -494,7 +502,7 @@ Options:
     const strategy = args.strategy as AuthStrategy;
     const success = await authenticate(args.target!, strategy, { username, password });
     console.log(success ? "[AUTH] Authentication complete" : "[AUTH] Authentication failed");
-    return;
+    process.exit(success ? 0 : 1);
   }
 
   if (args["save-state"]) {

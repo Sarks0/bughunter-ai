@@ -104,7 +104,11 @@ function extractHost(target: string): string {
   try {
     return new URL(target).hostname;
   } catch {
-    return target.replace(/:\d+$/, "");
+    // WHATWG URL rejects some hosts (e.g. `admin.127.0.0.1` is parsed as a
+    // broken IPv4 address). Fall back to deterministic host extraction so
+    // matching behaves identically with or without a trailing slash/path.
+    const withoutScheme = target.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+    return withoutScheme.split(/[/?#]/)[0].replace(/:\d+$/, "").toLowerCase();
   }
 }
 

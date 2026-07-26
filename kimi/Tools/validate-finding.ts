@@ -46,8 +46,11 @@ import { parseArgs } from "util";
 import { join } from "path";
 import { getSessionDir, toSlug } from "./lib/paths.ts";
 import { isInScope, loadScopeFromConfig, scopeSummary, type Scope } from "./lib/scope.ts";
+import { parseExtraHeaders } from "./lib/headers.ts";
 import { normalizeFindings, type Finding } from "./lib/finding.ts";
 import { loadFindings } from "./generate-report.ts";
+
+export { parseExtraHeaders };
 
 export type ValidationStatus = "validated" | "refuted" | "inconclusive" | "skipped_out_of_scope";
 
@@ -78,6 +81,8 @@ export interface ValidatorConfig {
   headless: boolean;
   /** Delay between requests/findings — no hammering. */
   requestDelayMs: number;
+  /** Extra HTTP headers (--header "Name: value") merged into every outgoing request. */
+  extraHeaders: Record<string, string>;
   /** Path to a target-config JSON; when set, request URLs are scope-checked. */
   scopeConfig?: string;
   scope?: Scope;
@@ -91,6 +96,7 @@ export const validatorConfig: ValidatorConfig = {
   noSandbox: false,
   headless: true,
   requestDelayMs: 100,
+  extraHeaders: {},
 };
 
 /** Everything a strategy needs besides the finding. */
@@ -387,7 +393,7 @@ function errorMessage(err: unknown): string {
  */
 async function httpGet(url: string, ctx: ValidationContext, options: { auth?: boolean } = {}): Promise<HttpResult> {
   try {
-    const headers: Record<string, string> = { "user-agent": "BugHunterAI-Validator/1.0" };
+    const headers: Record<string, string> = { "user-agent": "BugHunterAI-Validator/1.0", ...ctx.config.extraHeaders };
     if (options.auth && ctx.cookieHeader) headers.cookie = ctx.cookieHeader;
     const response = await fetch(url, {
       method: "GET",
@@ -430,6 +436,7 @@ export async function validateXss(finding: Finding, ctx: ValidationContext): Pro
     const context = await browser.newContext({
       ignoreHTTPSErrors: true,
       ...(ctx.storageStatePath ? { storageState: ctx.storageStatePath } : {}),
+      ...(Object.keys(ctx.config.extraHeaders).length > 0 ? { extraHTTPHeaders: ctx.config.extraHeaders } : {}),
     });
     await context.addInitScript(() => {
       (window as unknown as { __xss_confirmed?: boolean }).__xss_confirmed =
@@ -758,6 +765,7 @@ Usage:
   bun validate-finding.ts --findings <path|dir> --target <url>
       [--session <slug>] [--output <path>] [--scope-config <path>]
       [--timeout-ms <n>] [--no-browser] [--proxy <url>] [--no-sandbox]
+      [--header "Name: value"]...
 
   --findings      findings JSON file (bare array or {findings:[...]}) or a
                   directory of *-findings.json files (merged)
@@ -769,6 +777,8 @@ Usage:
                   skipped (validation_status: skipped_out_of_scope)
   --timeout-ms    per-request timeout (default 15000)
   --no-browser    skip browser strategies (XSS becomes inconclusive)
+  --header        extra request header, repeatable (e.g. a deployment-
+                  protection bypass); split on the first colon
   --proxy         route requests through a proxy (http://127.0.0.1:8080 = Burp)
   --no-sandbox    pass --no-sandbox to Chromium (needed when running as root)`;
 }
@@ -786,6 +796,7 @@ async function main(): Promise<void> {
       "no-browser": { type: "boolean", default: false },
       proxy: { type: "string", default: "" },
       "no-sandbox": { type: "boolean", default: false },
+      header: { type: "string", multiple: true },
     },
   });
 
@@ -799,6 +810,12 @@ async function main(): Promise<void> {
   validatorConfig.proxy = args.proxy;
   validatorConfig.noSandbox = args["no-sandbox"];
   validatorConfig.scopeConfig = args["scope-config"];
+  try {
+    validatorConfig.extraHeaders = parseExtraHeaders(args.header ?? []);
+  } catch (err) {
+    console.error(`[validate] Fatal: ${errorMessage(err)}`);
+    process.exit(1);
+  }
 
   if (validatorConfig.scopeConfig) {
     validatorConfig.scope = await loadScopeFromConfig(validatorConfig.scopeConfig);
@@ -836,6 +853,9 @@ async function main(): Promise<void> {
   console.log(`[*] BugHunter Finding Validator`);
   console.log(`[*] Target: ${args.target} (session: ${sessionSlug})`);
   console.log(`[*] Findings: ${findings.length} | browser: ${validatorConfig.noBrowser ? "disabled" : "enabled"} | proxy: ${validatorConfig.proxy || "none"}`);
+  if (Object.keys(validatorConfig.extraHeaders).length > 0) {
+    console.log(`[*] Extra headers: ${Object.keys(validatorConfig.extraHeaders).join(", ")} (values redacted)`);
+  }
   if (sessionAuth.cookieHeader) console.log(`[*] Session auth state loaded (cookies for ${targetHost})`);
 
   const results = await runValidation(findings, ctx);

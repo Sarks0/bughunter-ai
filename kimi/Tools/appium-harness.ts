@@ -427,8 +427,11 @@ async function main(): Promise<void> {
       console.log("[*] Then: ios sslpinning disable && ios keychain dump");
     }
   } catch (e) {
+    // Fatal startup failure (missing tools, missing APK): bail out before
+    // any findings file is written or a success message is printed.
     console.error(`[!] ${e instanceof Error ? e.message : String(e)}`);
     process.exitCode = 1;
+    return;
   }
 
   const criticalFindings = findings.filter((f) => f.cvss_estimate >= CRITICAL_CVSS_THRESHOLD);
