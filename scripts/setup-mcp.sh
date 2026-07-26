@@ -6,6 +6,11 @@
 # registers them with the Claude Code CLI (user scope). Idempotent: existing
 # entries with the same name are updated to the template version, all other
 # entries are preserved, and any existing config is backed up first.
+#
+# Requirements: bash (3.2+), python3 (3.6+; used for the JSON merge), sed,
+# and GNU coreutils (mktemp, date, cp, mv). `timeout` is optional — the
+# package pre-warm degrades gracefully without it. Not BusyBox-safe as-is
+# (mktemp -d, cp/mv semantics differ on some minimal systems).
 set -euo pipefail
 
 RED='\033[0;31m'
@@ -44,7 +49,8 @@ Options:
   --kimi-only        Only update the Kimi Code CLI config (mcp.json)
   --claude-only      Only register servers with the Claude Code CLI
   --skip-vuln-intel  Do not clone/install the vulnerability-intelligence-mcp
-                     server (its config entry is still merged)
+                     server (its config entry is still merged, but disabled
+                     unless the binary already exists)
   --help             Show this help
 
 Environment:
@@ -140,12 +146,24 @@ fi
 # ---------------------------------------------------------------------------
 BH_PROJECTS_DIR="${BH_PROJECTS_DIR:-$HOME/Projects}"
 SUBSTITUTED="$(mktemp)"
-trap 'rm -f "$SUBSTITUTED"; [ -n "$CLAUDE_JSON_DIR" ] && rm -rf "$CLAUDE_JSON_DIR"' EXIT
+cleanup() {
+    rm -f "$SUBSTITUTED"
+    if [ -n "$CLAUDE_JSON_DIR" ]; then rm -rf "$CLAUDE_JSON_DIR"; fi
+}
+trap cleanup EXIT
 
-sed -e "s|\$BH_REPO_ROOT|$REPO_ROOT|g" \
-    -e "s|\$BH_PROJECTS_DIR|$BH_PROJECTS_DIR|g" \
-    -e "s|\$VULN_INTEL_BIN|$VULN_INTEL_BIN|g" \
+# Escape sed replacement metacharacters (& | \) so paths containing them
+# don't corrupt the substituted template.
+sedesc() { printf '%s' "$1" | sed 's/[&|\]/\\&/g'; }
+
+sed -e "s|\$BH_REPO_ROOT|$(sedesc "$REPO_ROOT")|g" \
+    -e "s|\$BH_PROJECTS_DIR|$(sedesc "$BH_PROJECTS_DIR")|g" \
+    -e "s|\$VULN_INTEL_BIN|$(sedesc "$VULN_INTEL_BIN")|g" \
     "$TEMPLATE" > "$SUBSTITUTED"
+
+# The vuln-intel entry is only enabled when its binary is actually present —
+# otherwise Kimi would try to launch a non-existent path on every start.
+if [ -x "$VULN_INTEL_BIN" ]; then VULN_INTEL_ENABLED=true; else VULN_INTEL_ENABLED=false; fi
 
 # ---------------------------------------------------------------------------
 # Kimi target: merge into mcp.json
@@ -163,17 +181,23 @@ if [ $DO_KIMI -eq 1 ]; then
     fi
 
     MERGED="$(mktemp)"
-    python3 - "$SUBSTITUTED" "$KIMI_MCP" "$MERGED" <<'PYEOF'
+    python3 - "$SUBSTITUTED" "$KIMI_MCP" "$MERGED" "$VULN_INTEL_ENABLED" <<'PYEOF'
 import json, sys
 
-tpl_path, target_path, out_path = sys.argv[1:4]
+tpl_path, target_path, out_path, vuln_intel_enabled = sys.argv[1:5]
 with open(tpl_path) as f:
     tpl = json.load(f)["mcpServers"]
+if "vuln-intel" in tpl:
+    tpl["vuln-intel"]["enabled"] = vuln_intel_enabled == "true"
 try:
     with open(target_path) as f:
         existing = json.load(f)
-except (FileNotFoundError, json.JSONDecodeError):
+except FileNotFoundError:
     existing = {}
+except json.JSONDecodeError as e:
+    sys.stderr.write("error: %s is not valid JSON (%s) — refusing to overwrite it.\n" % (target_path, e))
+    sys.stderr.write("Fix or remove the file (a backup was made) and re-run.\n")
+    sys.exit(1)
 existing.setdefault("mcpServers", {})
 existing["mcpServers"].update(tpl)
 with open(out_path, "w") as f:
@@ -219,9 +243,10 @@ PYEOF
         for name in filesystem github burp shodan virustotal vuln-intel; do
             if claude mcp get "$name" >/dev/null 2>&1; then
                 info "$name already registered — leaving existing entry"
-            else
-                claude mcp add-json --scope user "$name" "$(cat "$CLAUDE_JSON_DIR/$name.json")" >/dev/null
+            elif claude mcp add-json --scope user "$name" "$(cat "$CLAUDE_JSON_DIR/$name.json")" >/dev/null 2>&1; then
                 ok "$name registered (user scope)"
+            else
+                warn "claude mcp add-json failed for $name — register it manually"
             fi
         done
     fi
@@ -264,7 +289,11 @@ echo -e "${GREEN}${BOLD}MCP setup complete.${NC}"
 echo ""
 echo -e "${BOLD}Servers:${NC}"
 echo -e "  ${GREEN}enabled${NC}  filesystem     (keyless; allowlist: $REPO_ROOT, $BH_PROJECTS_DIR)"
-echo -e "  ${GREEN}enabled${NC}  vuln-intel     (keyless; CISA KEV + EPSS + NVD — optional NIST_NVD_API_KEY raises NVD rate limits)"
+if [ "$VULN_INTEL_ENABLED" = true ]; then
+    echo -e "  ${GREEN}enabled${NC}  vuln-intel     (keyless; CISA KEV + EPSS + NVD — optional NIST_NVD_API_KEY raises NVD rate limits)"
+else
+    echo -e "  ${YELLOW}disabled${NC} vuln-intel     binary not installed — re-run without --skip-vuln-intel to install it"
+fi
 echo -e "  ${YELLOW}disabled${NC} github         pending: export GITHUB_PERSONAL_ACCESS_TOKEN in ~/.zshrc"
 echo -e "  ${YELLOW}disabled${NC} shodan         pending: export SHODAN_API_KEY in ~/.zshrc"
 echo -e "  ${YELLOW}disabled${NC} virustotal     pending: export VT_APIKEY in ~/.zshrc (a free VT key works)"
