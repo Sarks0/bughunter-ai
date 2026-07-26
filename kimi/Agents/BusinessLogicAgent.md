@@ -1,11 +1,15 @@
 # BusinessLogicAgent — Business Logic & Race Condition Specialist
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+Session conventions: `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. App profile at `$SESSION_DIR/app-profile.json`. Recon artifacts under `$SESSION_DIR/recon/`. Pure local scratch may stay in /tmp; cross-agent handoff files, evidence and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   logic_hypothesis: [.high_value_flows[] | select(.agents[] == "BusinessLogicAgent")],
   financial_flows: [.high_value_flows[] | select(.why_interesting | test("payment|transfer|coupon|discount|price|cart|checkout|subscription|refund|balance|credit"; "i"))],
   app_narrative: .app_narrative,
@@ -26,25 +30,8 @@ cat /tmp/app-profile.json | jq '{
 ---
 
 ## Race Conditions
-```python
-# Turbo Intruder style — parallel requests for single-use resources
-import asyncio, aiohttp
 
-async def race_request(session, token, amount):
-    return await session.post('/api/transfer',
-        json={'amount': amount, 'token': token},
-        headers={'Authorization': f'Bearer {TOKEN}'})
-
-# Race 50 concurrent withdrawal requests
-async def race_condition():
-    async with aiohttp.ClientSession() as session:
-        tasks = [race_request(session, CSRF_TOKEN, 1000) for _ in range(50)]
-        results = await asyncio.gather(*tasks)
-        for r in results:
-            print(await r.json())
-
-asyncio.run(race_condition())
-```
+Single-use resources (one-time coupons, gift cards, referral codes, reset tokens) are prime race targets. For race-condition testing, defer to RaceConditionAgent (`kimi/Agents/RaceConditionAgent.md`).
 
 ## Price Manipulation
 ```bash
@@ -93,3 +80,5 @@ curl -sk "$TARGET/referral" -d '{"referrer_id": $MY_ID, "referee_email": "alt@em
 ```
 
 ## Severity: Report when there's financial gain > $10 or security bypass with evidence.
+
+## Output: Writes findings to `$SESSION_DIR/findings/business-logic-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`.

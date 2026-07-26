@@ -9,8 +9,11 @@ Target is an AI chatbot, copilot, RAG system, or LLM-powered app.
 ## Pre-flight
 
 ```bash
-bun kimi/Tools/hunt-orchestrator.ts --target "$TARGET" --workflow W_HUNT_LLM --mode "$MODE"
+bun kimi/Tools/hunt-orchestrator.ts --target "$TARGET" --workflow W_HUNT_LLM --mode "$MODE" \
+  --config kimi-data/TargetProfiles/program.json
 ```
+
+Pass `--scope-config` (the same target-config JSON) to playwright-harness, burp-bridge, and validate-finding on every run.
 
 ## Phases
 
@@ -21,7 +24,7 @@ bun kimi/Tools/hunt-orchestrator.ts --target "$TARGET" --workflow W_HUNT_LLM --m
 5. **INJECTION** — XSS/SSRF via AI output, RCE via generated code.
 6. **ACCESS_CONTROL** — Cross-user data access.
 7. **FILE_HANDLING** — Document upload for RAG poisoning.
-8. **LEARNING**.
-9. **REPORT**.
+8. **VALIDATION** — Validate findings with `validate-finding.ts`; only `validated` findings are reported as confirmed. Refuted findings go to the learning log.
+9. **REPORT** — Generate the report from validated findings.
 
-Primary agent: `kimi/Agents/LLMSecurityAgent.md`.
+Primary agent: `kimi/Agents/LLMSecurityAgent.md` (the former standalone LLM agent was merged into it).

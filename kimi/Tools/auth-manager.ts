@@ -2,32 +2,16 @@
 /**
  * BugHunter AI — Kimi port
  * Auth manager: authentication flows, session persistence, and auto-refresh.
+ *
+ * This file is import-safe: argument parsing happens inside main(), so
+ * importing it as a library never touches process argv. Library callers can
+ * tune behavior via the exported `authConfig` object (or CLI flags when run
+ * directly).
  */
 
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
 import { parseArgs } from "util";
-import { getSessionDir, MEMORY_DIR } from "./lib/paths.ts";
-
-const { values: args } = parseArgs({
-  args: Bun.argv.slice(2),
-  options: {
-    target: { type: "string" },
-    strategy: { type: "string", default: "basic" },
-    username: { type: "string" },
-    password: { type: "string" },
-    cookie: { type: "string" },
-    token: { type: "string" },
-    "creds-from": { type: "string" },
-    "protected-page": { type: "string" },
-    proxy: { type: "string", default: "http://127.0.0.1:8080" },
-    headless: { type: "boolean", default: false },
-    authenticate: { type: "boolean", default: false },
-    check: { type: "boolean", default: false },
-    refresh: { type: "boolean", default: false },
-    "save-state": { type: "boolean", default: false },
-    "load-state": { type: "boolean", default: false },
-  },
-});
+import { getSessionDir, toSlug } from "./lib/paths.ts";
 
 export type AuthStrategy = "basic" | "b2c" | "oauth" | "saml" | "api" | "cookie" | "token";
 
@@ -43,9 +27,26 @@ export interface AuthState {
   isValid: boolean;
 }
 
-function toSlug(url: string): string {
-  return url.replace(/^https?:\/\//, "").replace(/[^a-z0-9]/gi, "-").replace(/-+/g, "-").toLowerCase();
+export interface AuthManagerConfig {
+  target?: string;
+  strategy: string;
+  cookie?: string;
+  token?: string;
+  protectedPage?: string;
+  proxy?: string;
+  /** Headless by default; --headful on the CLI sets this to false. */
+  headless: boolean;
+  /** Chromium sandbox is ON by default; --no-sandbox opts out (needed as root). */
+  noSandbox: boolean;
 }
+
+/** Mutable configuration; the CLI populates it in main(), library callers may set it directly. */
+export const authConfig: AuthManagerConfig = {
+  strategy: "basic",
+  proxy: "http://127.0.0.1:8080",
+  headless: true,
+  noSandbox: false,
+};
 
 function getAuthStatePath(target: string): string {
   return `${getSessionDir(toSlug(target))}/auth-state.json`;
@@ -56,8 +57,8 @@ function getStorageStatePath(target: string): string {
 }
 
 async function loadCredsFromVault(targetName: string): Promise<{ username?: string; password?: string; cookie?: string; token?: string }> {
+  const { getCredentials, VaultError } = await import("./credential-vault.ts");
   try {
-    const { getCredentials } = await import("./credential-vault.ts");
     const cred = await getCredentials(targetName, process.env.BH_VAULT_PASSPHRASE);
     if (!cred) return {};
     return {
@@ -66,22 +67,26 @@ async function loadCredsFromVault(targetName: string): Promise<{ username?: stri
       cookie: cred.cookie,
       token: cred.jwt || cred.apiKey,
     };
-  } catch {
+  } catch (err) {
+    if (err instanceof VaultError) {
+      console.error(`[AUTH] Vault error: ${err.message}`);
+      process.exit(1);
+    }
     return {};
   }
 }
 
 async function createBrowser(): Promise<Browser> {
   return chromium.launch({
-    headless: args.headless,
-    proxy: { server: args.proxy },
-    args: ["--ignore-certificate-errors", "--no-sandbox"],
+    headless: authConfig.headless,
+    proxy: authConfig.proxy ? { server: authConfig.proxy } : undefined,
+    args: ["--ignore-certificate-errors", ...(authConfig.noSandbox ? ["--no-sandbox"] : [])],
   });
 }
 
 async function authBasic(page: Page, username: string, password: string): Promise<boolean> {
   console.log("[AUTH] Strategy: basic (form login)");
-  await page.goto(args.target!, { waitUntil: "networkidle", timeout: 15000 });
+  await page.goto(authConfig.target!, { waitUntil: "networkidle", timeout: 15000 });
 
   const usernameField = await page.$('input[type="email"], input[type="text"][name*="user"], input[type="text"][name*="email"], input[name="username"], input[id*="user"], input[id*="email"]');
   const passwordField = await page.$('input[type="password"]');
@@ -113,7 +118,7 @@ async function authBasic(page: Page, username: string, password: string): Promis
 
 async function authB2C(page: Page, username: string, password: string): Promise<boolean> {
   console.log("[AUTH] Strategy: b2c (Azure AD B2C popup flow)");
-  await page.goto(args.target!, { waitUntil: "domcontentloaded", timeout: 15000 });
+  await page.goto(authConfig.target!, { waitUntil: "domcontentloaded", timeout: 15000 });
 
   const popupPromise = page.context().waitForEvent("page", { timeout: 10000 }).catch(() => null);
   const loginBtn = await page.$('button:has-text("Sign in"), button:has-text("Log in"), a:has-text("Sign in"), a:has-text("Log in"), [data-testid*="login"], [data-testid*="signin"]');
@@ -154,7 +159,7 @@ async function authB2C(page: Page, username: string, password: string): Promise<
 
 async function authOAuth(page: Page, username: string, password: string): Promise<boolean> {
   console.log("[AUTH] Strategy: oauth");
-  await page.goto(args.target!, { waitUntil: "domcontentloaded", timeout: 15000 });
+  await page.goto(authConfig.target!, { waitUntil: "domcontentloaded", timeout: 15000 });
 
   const oauthBtn = await page.$('a:has-text("Login with"), button:has-text("Login with"), a:has-text("Continue with"), button:has-text("Continue with"), [data-testid*="oauth"], [data-testid*="sso"]');
   if (oauthBtn) await oauthBtn.click();
@@ -181,20 +186,20 @@ async function authOAuth(page: Page, username: string, password: string): Promis
   await page.waitForTimeout(5000);
   await page.waitForLoadState("networkidle").catch(() => {});
 
-  const success = page.url().includes(new URL(args.target!).hostname);
+  const success = page.url().includes(new URL(authConfig.target!).hostname);
   console.log(success ? "[AUTH] OAuth login successful" : "[AUTH] OAuth login may have failed");
   return success;
 }
 
 async function authCookie(context: BrowserContext): Promise<boolean> {
   console.log("[AUTH] Strategy: cookie");
-  const cookieStr = args.cookie;
+  const cookieStr = authConfig.cookie;
   if (!cookieStr) {
     console.log("[AUTH] No cookie provided");
     return false;
   }
 
-  const domain = new URL(args.target!).hostname;
+  const domain = new URL(authConfig.target!).hostname;
   const cookies = cookieStr.split(";").map((c) => {
     const [name, ...valueParts] = c.trim().split("=");
     return { name: name.trim(), value: valueParts.join("=").trim(), domain, path: "/" };
@@ -207,7 +212,7 @@ async function authCookie(context: BrowserContext): Promise<boolean> {
 
 async function authToken(page: Page): Promise<boolean> {
   console.log("[AUTH] Strategy: token");
-  const token = args.token;
+  const token = authConfig.token;
   if (!token) {
     console.log("[AUTH] No token provided");
     return false;
@@ -220,7 +225,7 @@ async function authToken(page: Page): Promise<boolean> {
 
 async function authAPI(username: string, password: string): Promise<boolean> {
   console.log("[AUTH] Strategy: api");
-  const target = args.target!;
+  const target = authConfig.target!;
 
   const loginEndpoints = [
     "/api/auth/login",
@@ -247,7 +252,7 @@ async function authAPI(username: string, password: string): Promise<boolean> {
         console.log(`[AUTH] API login successful at ${endpoint}`);
         const token = data.token || data.access_token || data.jwt || data.session_token;
         if (token) {
-          console.log(`[AUTH] Token obtained: ${token.slice(0, 20)}...`);
+          console.log(`[AUTH] Token obtained (length: ${String(token).length})`);
         }
         return true;
       }
@@ -261,11 +266,11 @@ async function authAPI(username: string, password: string): Promise<boolean> {
 }
 
 export async function isSessionValid(target: string, cookie?: string): Promise<boolean> {
-  const protectedPage = args["protected-page"] || target;
+  const protectedPage = authConfig.protectedPage || target;
   try {
     const headers: Record<string, string> = {};
     if (cookie) headers["Cookie"] = cookie;
-    if (args.token) headers["Authorization"] = `Bearer ${args.token}`;
+    if (authConfig.token) headers["Authorization"] = `Bearer ${authConfig.token}`;
 
     const res = await fetch(protectedPage, { headers, redirect: "manual" });
     if (res.status >= 200 && res.status < 300) return true;
@@ -280,6 +285,13 @@ export async function isSessionValid(target: string, cookie?: string): Promise<b
   }
 }
 
+/** Decode a base64url segment (JWT payloads use base64url without padding). */
+function decodeBase64Url(segment: string): string {
+  const b64 = segment.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = b64 + "=".repeat((4 - (b64.length % 4)) % 4);
+  return Buffer.from(padded, "base64").toString("utf-8");
+}
+
 async function saveAuthState(target: string, context: BrowserContext): Promise<void> {
   const storageStatePath = getStorageStatePath(target);
   const authStatePath = getAuthStatePath(target);
@@ -289,7 +301,7 @@ async function saveAuthState(target: string, context: BrowserContext): Promise<v
 
   const authState: AuthState = {
     target,
-    strategy: args.strategy as AuthStrategy,
+    strategy: authConfig.strategy as AuthStrategy,
     cookies: storageState.cookies.map((c) => ({
       name: c.name,
       value: c.value,
@@ -308,7 +320,7 @@ async function saveAuthState(target: string, context: BrowserContext): Promise<v
   for (const cookie of storageState.cookies) {
     if (cookie.value.split(".").length === 3) {
       try {
-        const payload = JSON.parse(Buffer.from(cookie.value.split(".")[1], "base64").toString());
+        const payload = JSON.parse(decodeBase64Url(cookie.value.split(".")[1]));
         if (payload.exp) {
           authState.tokenExpiry = new Date(payload.exp * 1000).toISOString();
           console.log(`[AUTH] Token expires: ${authState.tokenExpiry}`);
@@ -330,23 +342,29 @@ async function loadAuthState(target: string): Promise<AuthState | null> {
   return JSON.parse(await file.text());
 }
 
+/** Build a Cookie header from a saved auth state, if one exists. */
+function cookieHeaderFromState(state: AuthState | null): string | undefined {
+  if (!state || !state.cookies || state.cookies.length === 0) return undefined;
+  return state.cookies.map((c) => `${c.name}=${c.value}`).join("; ");
+}
+
+async function newContextWithSavedState(browser: Browser, target: string): Promise<BrowserContext> {
+  const storageFile = Bun.file(getStorageStatePath(target));
+  if (await storageFile.exists()) {
+    console.log("[AUTH] Loading saved browser state...");
+    const storageState = JSON.parse(await storageFile.text());
+    return browser.newContext({ storageState, ignoreHTTPSErrors: true });
+  }
+  return browser.newContext({ ignoreHTTPSErrors: true });
+}
+
 export async function authenticate(
   target: string,
   strategy: AuthStrategy,
   creds: { username?: string; password?: string }
 ): Promise<boolean> {
   const browser = await createBrowser();
-  const storageStatePath = getStorageStatePath(target);
-  const storageFile = Bun.file(storageStatePath);
-
-  let context: BrowserContext;
-  if (await storageFile.exists()) {
-    console.log("[AUTH] Loading saved browser state...");
-    const storageState = JSON.parse(await storageFile.text());
-    context = await browser.newContext({ storageState, ignoreHTTPSErrors: true });
-  } else {
-    context = await browser.newContext({ ignoreHTTPSErrors: true });
-  }
+  const context = await newContextWithSavedState(browser, target);
 
   const page = await context.newPage();
   let success = false;
@@ -382,6 +400,41 @@ export async function authenticate(
 }
 
 async function main() {
+  const { values: args } = parseArgs({
+    args: Bun.argv.slice(2),
+    options: {
+      target: { type: "string" },
+      strategy: { type: "string", default: "basic" },
+      username: { type: "string" },
+      password: { type: "string" },
+      cookie: { type: "string" },
+      token: { type: "string" },
+      "creds-from": { type: "string" },
+      "protected-page": { type: "string" },
+      proxy: { type: "string", default: "http://127.0.0.1:8080" },
+      // Headless is the default; --headful shows the browser.
+      // --headless is kept as a backwards-compatible alias (now a no-op).
+      headful: { type: "boolean", default: false },
+      headless: { type: "boolean", default: false },
+      // Chromium sandbox is on by default; --no-sandbox opts out (e.g. as root).
+      "no-sandbox": { type: "boolean", default: false },
+      authenticate: { type: "boolean", default: false },
+      check: { type: "boolean", default: false },
+      refresh: { type: "boolean", default: false },
+      "save-state": { type: "boolean", default: false },
+      "load-state": { type: "boolean", default: false },
+    },
+  });
+
+  authConfig.target = args.target;
+  authConfig.strategy = args.strategy;
+  authConfig.cookie = args.cookie;
+  authConfig.token = args.token;
+  authConfig.protectedPage = args["protected-page"];
+  authConfig.proxy = args.proxy;
+  authConfig.headless = !args.headful;
+  authConfig.noSandbox = args["no-sandbox"];
+
   if (!args.target) {
     console.log(`auth-manager — BugHunter AI Authentication Manager
 
@@ -391,7 +444,13 @@ Usage:
   auth-manager --target URL --authenticate --strategy cookie --cookie 'name=value'
   auth-manager --target URL --authenticate --strategy token --token 'xxx'
   auth-manager --target URL --check [--protected-page URL]
-  auth-manager --target URL --refresh`);
+  auth-manager --target URL --refresh
+  auth-manager --target URL --save-state [--cookie 'name=value']
+  auth-manager --target URL --load-state
+
+Options:
+  --headful      Show the browser (headless is the default; --headless is kept as an alias)
+  --no-sandbox   Disable the Chromium sandbox (needed when running as root)`);
     return;
   }
 
@@ -406,8 +465,8 @@ Usage:
   }
 
   if (args.check) {
-    const valid = await isSessionValid(args.target!);
     const state = await loadAuthState(args.target!);
+    const valid = await isSessionValid(args.target!, cookieHeaderFromState(state));
     console.log(`[AUTH CHECK] Session valid: ${valid}`);
     if (state?.tokenExpiry) {
       const expires = new Date(state.tokenExpiry);
@@ -438,9 +497,23 @@ Usage:
     return;
   }
 
-  if (args["save-state"] || args["load-state"]) {
+  if (args["save-state"]) {
+    // Persist the current auth state (existing storage state plus any
+    // cookies passed on the command line) to the session dir — the same
+    // files that --load-state and --check read.
+    const browser = await createBrowser();
+    const context = await newContextWithSavedState(browser, args.target!);
+    if (args.cookie) {
+      await authCookie(context);
+    }
+    await saveAuthState(args.target!, context);
+    await browser.close();
+    return;
+  }
+
+  if (args["load-state"]) {
     const state = await loadAuthState(args.target!);
-    if (args["load-state"] && state) {
+    if (state) {
       console.log(JSON.stringify(state, null, 2));
     } else {
       console.log("[AUTH] No saved state for this target");
@@ -449,5 +522,8 @@ Usage:
 }
 
 if (import.meta.main) {
-  main().catch(console.error);
+  main().catch((err) => {
+    console.error(`[AUTH] Fatal: ${err instanceof Error ? err.message : err}`);
+    process.exit(1);
+  });
 }

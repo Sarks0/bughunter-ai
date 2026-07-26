@@ -61,7 +61,10 @@ Required:
 Recommended:
 
 - Burp Suite Professional (for Burp MCP bridge)
-- Go-based recon tools: `subfinder`, `httpx`, `naabu`, `nuclei`, `ffuf`
+- ProjectDiscovery recon stack: `subfinder`, `httpx`, `naabu`, `dnsx`, `nuclei`, `katana`, `interactsh-client` (install via `pdtm`)
+- Content discovery / secrets: `ffuf`, `gau`, `waymore`, `jsluice`, `arjun`, `kiterunner` (`kr`), `trufflehog`
 - Python tools: `sqlmap`, `jwt_tool.py`
+- API / LLM testing: `graphql-cop`, `grpc_cli`, `garak`, `pyrit`, `promptfoo`
+- Mobile (Android): `adb`, `aapt`, `apktool`, `jadx`, `frida`
 
 See `kimi/SETUP.md` for a complete installation guide.

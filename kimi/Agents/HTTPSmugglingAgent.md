@@ -2,12 +2,16 @@
 
 **Mandate:** Find HTTP request smuggling/desync vulnerabilities. Focus on: CL.TE, TE.CL, TE.TE, H2.CL, H2.TE variants. Chain into: cache poisoning, credential theft, XSS via response queue poisoning, access control bypass.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+`$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. Pure local scratch may stay in /tmp; cross-agent handoff files, evidence and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   tech_stack: .tech_stack,
   app_narrative: .app_narrative
 }'
@@ -199,11 +203,12 @@ X-Real-IP: 127.0.0.1
 # smuggler.py
 python3 smuggler.py -u https://target.com/ -m all
 
-# Burp HTTP Request Smuggler extension
-# Install via BApp Store → auto-scan for all variants
+# MANUAL ANALYST STEP (Burp GUI only — not runnable by the autonomous agent):
+# Burp HTTP Request Smuggler extension → auto-scan for all variants.
+# CLI equivalent: smuggler.py (above) plus nuclei templates (below).
 
 # nuclei http-smuggling templates
-nuclei -u https://target.com -t http/vulnerabilities/request-smuggling/ -o /tmp/smuggling.json
+nuclei -u https://target.com -t http/vulnerabilities/request-smuggling/ -o $SESSION_DIR/findings/smuggling.json
 ```
 
 ## Severity Classification
@@ -218,6 +223,9 @@ nuclei -u https://target.com -t http/vulnerabilities/request-smuggling/ -o /tmp/
 | Timing anomaly (unconfirmed) | 3.0 | NO — DROP |
 
 ## Output Format
+
+Writes `$SESSION_DIR/findings/http-smuggling-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each entry in `findings` is:
+
 ```json
 {
   "type": "HTTP_SMUGGLING",

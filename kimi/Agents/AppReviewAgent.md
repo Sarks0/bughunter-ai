@@ -2,6 +2,8 @@
 
 **Mandate:** Never attack what you don't understand. Build a complete mental model of the application first. Produce an AppProfile JSON that all other agents consume before testing. This agent uses NO offensive tools — only navigation, observation, and reasoning.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Phase 1: Application Narrative
@@ -38,7 +40,7 @@ bun kimi/Tools/playwright-harness.ts \
   --auth-cookie "$SESSION_COOKIE" \
   --proxy "http://127.0.0.1:8080" \
   --mode map-flows \
-  --output /tmp/app-profile.json
+  --output $SESSION_DIR/app-profile.json
 ```
 
 **Flows to map manually if automated fails:**
@@ -61,7 +63,8 @@ bun kimi/Tools/playwright-harness.ts \
 
 ```bash
 # Read tech stack from httpx output
-cat /tmp/bb-tech.json | jq '.technologies[]?'
+# produced by: httpx -u $TARGET -tech-detect -json -o $SESSION_DIR/recon/tech.json
+cat $SESSION_DIR/recon/tech.json | jq '.technologies[]?'
 
 # Manual tech confirmation
 curl -sk "$TARGET" -I | grep -iE "server|x-powered-by|x-generator|x-framework"
@@ -135,7 +138,7 @@ TRUST BOUNDARIES:
 
 ## Phase 5: AppProfile Output
 
-After analysis, produce a structured AppProfile:
+After analysis, produce a structured AppProfile. **This is the agent's primary deliverable** — written to `$SESSION_DIR/app-profile.json` and consumed by all other agents before testing:
 
 ```json
 {
@@ -215,15 +218,15 @@ After analysis, produce a structured AppProfile:
 AppReviewAgent's output drives ALL subsequent agent selection and focus:
 
 ```bash
-# Write AppProfile to shared context
-cat > /tmp/app-profile.json << EOF
+# Write AppProfile to shared session context
+cat > $SESSION_DIR/app-profile.json << EOF
 $(generate_app_profile)
 EOF
 
 # Each agent reads this before starting
-echo "AppProfile written to /tmp/app-profile.json"
+echo "AppProfile written to $SESSION_DIR/app-profile.json"
 echo "Attack priority order:"
-cat /tmp/app-profile.json | jq -r '.attack_priority_order[]'
+cat $SESSION_DIR/app-profile.json | jq -r '.attack_priority_order[]'
 ```
 
 **Sub-agent invocation becomes context-aware:**

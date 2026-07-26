@@ -2,12 +2,16 @@
 
 **Mandate:** Identify vulnerability classes in binaries through static + dynamic analysis. Output a structured `RE_FINDING` for ExploitDevAgent. Confirmed vuln class = pass to ExploitDevAgent. Speculation only = DROP.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Binary analysis must only be performed on the authorized target binary obtained from that in-scope target. Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+**Session directory:** `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. App profile at `$SESSION_DIR/app-profile.json`.
+
 ---
 
 ## Application Context (READ BEFORE STARTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   re_hypothesis: [.high_value_flows[] | select(.agents[] == "ReverseEngineeringAgent")],
   binary_targets: .binary_targets,
   platform: .tech_stack.platform,
@@ -31,7 +35,7 @@ cat /tmp/app-profile.json | jq '{
 
 ```bash
 TARGET_BINARY=$1
-OUTPUT_DIR=/tmp/re-analysis/$(basename $TARGET_BINARY)
+OUTPUT_DIR=$SESSION_DIR/re/analysis/$(basename $TARGET_BINARY)
 mkdir -p $OUTPUT_DIR
 
 # === FORMAT + ARCHITECTURE ===
@@ -39,9 +43,8 @@ file $TARGET_BINARY
 strings $TARGET_BINARY | grep -iE "version|copyright|build|author" | head -10
 
 # === PROTECTIONS CHECK ===
-# checksec available at: ~/.local/share/gem/ruby/2.6.0/bin/checksec (macOS)
-#   or: /Users/rajanishpathak/Library/Python/3.9/bin/checksec
-CHECKSEC_BIN="$(which checksec 2>/dev/null || echo '/Users/rajanishpathak/Library/Python/3.9/bin/checksec')"
+# checksec on PATH — install with `gem install checksec` or via pwntools
+CHECKSEC_BIN="$(command -v checksec || echo checksec)"
 # Linux ELF
 $CHECKSEC_BIN --file=$TARGET_BINARY 2>/dev/null || \
   python3 -c "
@@ -79,15 +82,17 @@ strings $TARGET_BINARY | grep -iE \
 
 ```bash
 # Headless Ghidra analysis (automated decompilation)
-GHIDRA_HOME="/opt/homebrew/Caskroom/ghidra/11.1.2-20240709/ghidra_11.1.2_PUBLIC"
-GHIDRA_PROJECT="/tmp/re-projects"
+# Ghidra on PATH, or set GHIDRA_HOME to your install — install from https://ghidra-sre.org
+GHIDRA_HOME="${GHIDRA_HOME:-}"
+ANALYZE_HEADLESS="${GHIDRA_HOME:+$GHIDRA_HOME/support/}analyzeHeadless"
+GHIDRA_PROJECT="$SESSION_DIR/re/ghidra-projects"
 mkdir -p $GHIDRA_PROJECT
 
-$GHIDRA_HOME/support/analyzeHeadless \
+$ANALYZE_HEADLESS \
   $GHIDRA_PROJECT MyProject \
   -import $TARGET_BINARY \
   -postScript ExportFunctionNames.java \
-  -scriptPath $GHIDRA_HOME/Ghidra/Features/Base/ghidra_scripts/ \
+  -scriptPath ${GHIDRA_HOME:+$GHIDRA_HOME/}Ghidra/Features/Base/ghidra_scripts/ \
   -log $OUTPUT_DIR/ghidra.log 2>/dev/null
 
 # Interactive: ghidraRun → File → Import → Analyze
@@ -233,6 +238,8 @@ After analysis, classify the bug:
 ---
 
 ## RE Finding Output Format
+
+Write the confirmed `RE_FINDING` to `$SESSION_DIR/re/re-finding.json` — this is the handoff file consumed by ExploitDevAgent. Also append the finding to `$SESSION_DIR/findings/reverse-engineering-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`.
 
 ```json
 {

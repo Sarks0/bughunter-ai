@@ -2,13 +2,18 @@
 
 **Mandate:** Find subdomain takeover vulnerabilities. Focus on: dangling DNS records pointing to deprovisioned cloud services (S3, Azure, Heroku, GitHub Pages, Shopify, Fastly, etc.). Verify claimability without actually claiming. Assess impact: cookie scope, CSP bypass, OAuth redirect.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Every discovered subdomain MUST be checked against program scope before takeover testing — a dangling CNAME on an out-of-scope domain is not reportable. Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+`$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. Pure local scratch may stay in /tmp; cross-agent handoff files, evidence and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
 # Use recon data from earlier phases
-cat /tmp/recon-subdomains.txt | head -20
+# produced by: subfinder -d $TARGET -silent | amass enum -passive -d $TARGET | sort -u > $SESSION_DIR/recon/subdomains.txt
+cat $SESSION_DIR/recon/subdomains.txt | head -20
 ```
 
 **Key reasoning questions:**
@@ -24,21 +29,21 @@ cat /tmp/recon-subdomains.txt | head -20
 ### 1. DNS Record Enumeration
 
 ```bash
-# Enumerate all subdomains (from recon phase)
-subfinder -d target.com -silent | tee /tmp/subs.txt
-amass enum -passive -d target.com | tee -a /tmp/subs.txt
-sort -u /tmp/subs.txt -o /tmp/subs.txt
+# Enumerate all subdomains (canonical list — if not already present from recon)
+subfinder -d target.com -silent | tee $SESSION_DIR/recon/subdomains.txt
+amass enum -passive -d target.com | tee -a $SESSION_DIR/recon/subdomains.txt
+sort -u $SESSION_DIR/recon/subdomains.txt -o $SESSION_DIR/recon/subdomains.txt
 
 # Resolve CNAME records for all subdomains
-cat /tmp/subs.txt | while read sub; do
+cat $SESSION_DIR/recon/subdomains.txt | while read sub; do
   cname=$(dig +short CNAME "$sub" 2>/dev/null)
   if [ -n "$cname" ]; then
     echo "$sub → $cname"
   fi
-done | tee /tmp/cname-records.txt
+done | tee $SESSION_DIR/recon/cname-records.txt
 
 # Check for dangling A records
-cat /tmp/subs.txt | while read sub; do
+cat $SESSION_DIR/recon/subdomains.txt | while read sub; do
   ip=$(dig +short A "$sub" 2>/dev/null | head -1)
   if [ -n "$ip" ]; then
     # Check if IP belongs to a claimable service
@@ -55,7 +60,7 @@ dig NS target.com +short
 
 ```bash
 # Check each subdomain for service-specific error pages
-cat /tmp/subs.txt | httpx -silent -status-code -title -follow-redirects | tee /tmp/httpx-subs.txt
+cat $SESSION_DIR/recon/subdomains.txt | httpx -silent -status-code -title -follow-redirects | tee $SESSION_DIR/recon/httpx-subs.txt
 
 # Known takeover signatures:
 # GitHub Pages:    "There isn't a GitHub Pages site here."
@@ -76,7 +81,7 @@ cat /tmp/subs.txt | httpx -silent -status-code -title -follow-redirects | tee /t
 # Pantheon:       "404 error unknown site"
 
 # Automated fingerprinting
-cat /tmp/subs.txt | while read sub; do
+cat $SESSION_DIR/recon/subdomains.txt | while read sub; do
   body=$(curl -sL "http://$sub" -o - 2>/dev/null | head -c 5000)
   if echo "$body" | grep -qiE "NoSuchBucket|There isn't a GitHub Pages|No such app|unknown domain|shop is currently unavailable"; then
     echo "[TAKEOVER CANDIDATE] $sub"
@@ -89,13 +94,13 @@ done
 
 ```bash
 # subjack — fast subdomain takeover scanner
-subjack -w /tmp/subs.txt -t 100 -timeout 30 -o /tmp/subjack-results.txt -ssl
+subjack -w $SESSION_DIR/recon/subdomains.txt -t 100 -timeout 30 -o $SESSION_DIR/findings/subjack-results.txt -ssl
 
 # nuclei subdomain takeover templates
-nuclei -l /tmp/subs.txt -t http/takeovers/ -o /tmp/nuclei-takeover.json
+nuclei -l $SESSION_DIR/recon/subdomains.txt -t http/takeovers/ -o $SESSION_DIR/findings/nuclei-takeover.json
 
 # dnsreaper — cloud-focused DNS takeover scanner
-dnsreaper scan --domain target.com --out /tmp/dnsreaper.json
+dnsreaper scan --domain target.com --out $SESSION_DIR/findings/dnsreaper.json
 
 # can-i-take-over-xyz reference
 # https://github.com/EdOverflow/can-i-take-over-xyz
@@ -172,6 +177,9 @@ dig A random-nonexistent.target.com +short
 | Dangling CNAME (unclaimable service) | 3.0 | NO — DROP |
 
 ## Output Format
+
+Writes `$SESSION_DIR/findings/subdomain-takeover-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each entry in `findings` is:
+
 ```json
 {
   "type": "SUBDOMAIN_TAKEOVER",

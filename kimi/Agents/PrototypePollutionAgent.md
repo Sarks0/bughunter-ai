@@ -2,12 +2,15 @@
 
 **Mandate:** Find exploitable prototype pollution — client-side (PP → XSS via gadgets) or server-side (PP → RCE via template engines). Must identify the full chain: source → pollution mechanism → gadget → impact. Skip theoretical/unreachable pollution.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+# $SESSION_DIR = kimi-data/Sessions/{slug}/ (the current hunt session dir)
+cat $SESSION_DIR/app-profile.json | jq '{
   app_narrative: .app_narrative,
   tech_stack: .tech_stack,
   js_frameworks: .tech_stack.framework
@@ -40,23 +43,17 @@ https://target.com/#__proto__[polluted]=true
 ```
 
 ```bash
-# dev-browser automated PP check
-dev-browser <<'EOF'
-const page = await browser.getPage("pp-test");
-const urls = [
-  "TARGET/?__proto__[pptest]=h4ck",
-  "TARGET/?__proto__.pptest=h4ck",
-  "TARGET/?constructor[prototype][pptest]=h4ck",
-  "TARGET/#__proto__[pptest]=h4ck",
-];
-for (const url of urls) {
-  await page.goto(url, { waitUntil: "domcontentloaded" });
-  const polluted = await page.evaluate(() => ({}).pptest);
-  if (polluted === "h4ck") {
-    console.log(JSON.stringify({ url, polluted: true, method: url.split("?")[1] || url.split("#")[1] }));
-  }
-}
-EOF
+# Automated PP check — navigate each variant in a real browser and check the page context.
+# Using Playwright (e.g. `bun kimi/Tools/playwright-harness.ts`, or a short Playwright
+# script with page.goto + page.evaluate), for each URL below:
+#   $TARGET/?__proto__[pptest]=h4ck
+#   $TARGET/?__proto__.pptest=h4ck
+#   $TARGET/?constructor[prototype][pptest]=h4ck
+#   $TARGET/#__proto__[pptest]=h4ck
+# navigate with waitUntil: "domcontentloaded", then evaluate in the page context:
+#   ({}).pptest
+# If it returns "h4ck", PP is CONFIRMED — record:
+#   { "url": <variant>, "polluted": true, "method": <query-or-fragment payload> }
 ```
 
 ### 2. Server-Side Prototype Pollution Discovery
@@ -172,20 +169,19 @@ pp-finder https://target.com/main.js
 
 # Server-side PP scanner
 # nuclei proto-pollution templates
-nuclei -u https://target.com -t http/vulnerabilities/prototype-pollution/ -o /tmp/pp-results.json
+nuclei -u https://target.com -t http/vulnerabilities/prototype-pollution/ -o $SESSION_DIR/findings/pp-nuclei-results.json
 
-# Manual gadget check — identify loaded libraries
-dev-browser <<'EOF'
-const page = await browser.getPage("gadgets");
-await page.goto("TARGET", { waitUntil: "load" });
-const libs = await page.evaluate(() => ({
-  jquery: typeof jQuery !== 'undefined' ? jQuery.fn.jquery : null,
-  lodash: typeof _ !== 'undefined' ? _.VERSION : null,
-  angular: typeof angular !== 'undefined' ? angular.version.full : null,
-  vue: typeof Vue !== 'undefined' ? Vue.version : null,
-}));
-console.log(JSON.stringify(libs));
-EOF
+# Manual gadget check — identify loaded libraries in a real browser.
+# Using Playwright (e.g. `bun kimi/Tools/playwright-harness.ts --target $TARGET`, or a
+# short Playwright script), navigate to $TARGET (waitUntil: "load") and evaluate in the
+# page context:
+#   ({
+#     jquery: typeof jQuery !== 'undefined' ? jQuery.fn.jquery : null,
+#     lodash: typeof _ !== 'undefined' ? _.VERSION : null,
+#     angular: typeof angular !== 'undefined' ? angular.version.full : null,
+#     vue: typeof Vue !== 'undefined' ? Vue.version : null,
+#   })
+# Record the detected library versions and match them against the gadgets in section 3.
 ```
 
 ## Severity Classification
@@ -200,6 +196,9 @@ EOF
 | Theoretical PP (unreachable code path) | 2.0 | NO — DROP |
 
 ## Output Format
+
+All confirmed findings are written to `$SESSION_DIR/findings/prototype-pollution-findings.json` as a single object of shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each finding follows:
+
 ```json
 {
   "type": "PROTOTYPE_POLLUTION",

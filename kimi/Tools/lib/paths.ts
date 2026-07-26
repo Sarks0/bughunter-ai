@@ -32,6 +32,19 @@ export function getSessionDir(targetSlug: string): string {
   return join(SESSIONS_DIR, targetSlug);
 }
 
+/**
+ * Canonical slug for a target URL or hostname: strips the protocol,
+ * lowercases, replaces non-alphanumeric runs with `-`, and strips
+ * leading/trailing dashes.
+ */
+export function toSlug(url: string): string {
+  return url
+    .replace(/^https?:\/\//i, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
 export function ensureDataDirs(): void {
   for (const dir of [DATA_DIR, SESSIONS_DIR, ...Object.values(MEMORY_DIR)]) {
     Bun.write(join(dir, ".gitkeep"), "");

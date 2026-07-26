@@ -10,7 +10,7 @@
     { "name": "INJECTION", "blocking": false, "agents": ["XSSAgent", "SSRFAgent", "RCEAgent"], "tools": [], "gates": [], "max_concurrent_agents": 3 },
     { "name": "ACCESS_CONTROL", "blocking": false, "agents": ["IDORAgent"], "tools": [], "gates": [] },
     { "name": "FILE_HANDLING", "blocking": false, "agents": ["FileUploadAgent"], "tools": [], "gates": [], "conditional": true },
-    { "name": "LEARNING", "blocking": true, "agents": [], "tools": [], "gates": [] },
+    { "name": "VALIDATION", "blocking": true, "agents": [], "tools": ["validate-finding"], "gates": [] },
     { "name": "REPORT", "blocking": true, "agents": [], "tools": ["generate-report"], "gates": [] }
   ]
 }

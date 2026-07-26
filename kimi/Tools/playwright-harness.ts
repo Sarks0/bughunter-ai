@@ -3,30 +3,55 @@
  * BugHunter AI — Kimi port
  * Browser harness using Playwright directly.
  * Modes: map-flows (observation), test (XSS, auth-bypass, IDOR).
+ *
+ * This file is import-safe: argument parsing happens inside main(), so
+ * importing it as a library never touches process argv. Library callers can
+ * tune behavior via the exported `harnessConfig` object.
  */
 
 import { parseArgs } from "util";
-import { chromium, type Browser, type BrowserContext, type Page } from "playwright";
-import { getSessionDir } from "./lib/paths.ts";
+import { chromium, type Browser, type BrowserContext } from "playwright";
+import { DATA_DIR, getSessionDir, toSlug } from "./lib/paths.ts";
+import { assertInScope, isInScope, loadScopeFromConfig, scopeSummary, type Scope } from "./lib/scope.ts";
+import type { Finding } from "./lib/finding.ts";
 
-const { values: args } = parseArgs({
-  args: Bun.argv.slice(2),
-  options: {
-    target: { type: "string" },
-    proxy: { type: "string", default: "http://127.0.0.1:8080" },
-    "auth-cookie": { type: "string", default: "" },
-    "auth-token": { type: "string", default: "" },
-    "crawl-depth": { type: "string", default: "3" },
-    mode: { type: "string", default: "test" },
-    "test-xss": { type: "boolean", default: false },
-    "test-auth-bypass": { type: "boolean", default: false },
-    "test-idor": { type: "boolean", default: false },
-    screenshots: { type: "string", default: "" },
-    output: { type: "string", default: "" },
-    headless: { type: "boolean", default: true },
-    "max-pages": { type: "string", default: "60" },
-  },
-});
+export interface HarnessConfig {
+  target?: string;
+  proxy: string;
+  authCookie: string;
+  authToken: string;
+  crawlDepth: number;
+  mode: string;
+  testXss: boolean;
+  testAuthBypass: boolean;
+  testIdor: boolean;
+  screenshots: string;
+  output: string;
+  headless: boolean;
+  maxPages: number;
+  /** Chromium sandbox is ON by default; --no-sandbox opts out (needed as root). */
+  noSandbox: boolean;
+  /** Path to a target-config JSON; when set, crawl/scan URLs are scope-checked. */
+  scopeConfig?: string;
+  scope?: Scope;
+}
+
+/** Mutable configuration; the CLI populates it in main(), library callers may set it directly. */
+export const harnessConfig: HarnessConfig = {
+  proxy: "http://127.0.0.1:8080",
+  authCookie: "",
+  authToken: "",
+  crawlDepth: 3,
+  mode: "test",
+  testXss: false,
+  testAuthBypass: false,
+  testIdor: false,
+  screenshots: "",
+  output: "",
+  headless: true,
+  maxPages: 60,
+  noSandbox: false,
+};
 
 interface FormField {
   name: string;
@@ -46,17 +71,6 @@ interface Flow {
   forms: FormInfo[];
   trust_boundary_crossings: string[];
   agents_to_deploy: string[];
-}
-
-interface Finding {
-  type: string;
-  url: string;
-  parameter?: string;
-  payload?: string;
-  evidence: string;
-  cvss_estimate: number;
-  confirmed: boolean;
-  timestamp: string;
 }
 
 interface AppProfile {
@@ -80,48 +94,62 @@ interface AppProfile {
   }>;
   attack_priority_order: string[];
   trust_boundary_crossings: string[];
+  /** AI/LLM features detected in page source (LLM endpoints, chat widgets, SDKs). */
+  ai_llm_features: string[];
   all_discovered_urls: string[];
   timestamp: string;
 }
 
-function toSlug(url: string): string {
-  return url.replace(/^https?:\/\//, "").replace(/[^a-z0-9]/gi, "-").replace(/-+/g, "-").toLowerCase();
-}
-
 function resolveOutputPath(defaultName: string): string {
-  if (args.output) return args.output;
-  if (args.target) {
-    return `kimi-data/Sessions/${toSlug(args.target)}/${defaultName}`;
+  if (harnessConfig.output) return harnessConfig.output;
+  if (harnessConfig.target) {
+    return `${getSessionDir(toSlug(harnessConfig.target))}/${defaultName}`;
   }
-  return `kimi-data/${defaultName}`;
+  return `${DATA_DIR}/${defaultName}`;
 }
 
 function resolveScreenshotsDir(): string {
-  if (args.screenshots) return args.screenshots;
-  if (args.target) return `kimi-data/Sessions/${toSlug(args.target)}/screenshots`;
-  return "kimi-data/screenshots";
+  if (harnessConfig.screenshots) return harnessConfig.screenshots;
+  if (harnessConfig.target) return `${getSessionDir(toSlug(harnessConfig.target))}/screenshots`;
+  return `${DATA_DIR}/screenshots`;
+}
+
+/** True when `url` parses and shares an origin with `baseUrl` (scheme + host + port). */
+export function isSameOrigin(url: string, baseUrl: string): boolean {
+  try {
+    return new URL(url).origin === new URL(baseUrl).origin;
+  } catch {
+    return false;
+  }
+}
+
+/** True when a URL may be crawled: same origin, and in scope when a scope is configured. */
+function isCrawlable(url: string, baseUrl: string): boolean {
+  if (!isSameOrigin(url, baseUrl)) return false;
+  if (harnessConfig.scope && !isInScope(url, harnessConfig.scope).inScope) return false;
+  return true;
 }
 
 async function createBrowser(): Promise<Browser> {
   return chromium.launch({
-    headless: args.headless,
-    proxy: args.proxy ? { server: args.proxy } : undefined,
-    args: ["--ignore-certificate-errors", "--no-sandbox"],
+    headless: harnessConfig.headless,
+    proxy: harnessConfig.proxy ? { server: harnessConfig.proxy } : undefined,
+    args: ["--ignore-certificate-errors", ...(harnessConfig.noSandbox ? ["--no-sandbox"] : [])],
   });
 }
 
 async function createContext(browser: Browser): Promise<BrowserContext> {
   const extraHeaders: Record<string, string> = {};
-  if (args["auth-token"]) extraHeaders.Authorization = `Bearer ${args["auth-token"]}`;
+  if (harnessConfig.authToken) extraHeaders.Authorization = `Bearer ${harnessConfig.authToken}`;
 
   const context = await browser.newContext({
     ignoreHTTPSErrors: true,
     extraHTTPHeaders: Object.keys(extraHeaders).length > 0 ? extraHeaders : undefined,
   });
 
-  if (args["auth-cookie"]) {
-    const domain = new URL(args.target!).hostname;
-    const cookies = args["auth-cookie"].split(";").map((c) => {
+  if (harnessConfig.authCookie) {
+    const domain = new URL(harnessConfig.target!).hostname;
+    const cookies = harnessConfig.authCookie.split(";").map((c) => {
       const [name, ...valueParts] = c.trim().split("=");
       return { name: name.trim(), value: valueParts.join("=").trim(), domain, path: "/" };
     });
@@ -132,9 +160,10 @@ async function createContext(browser: Browser): Promise<BrowserContext> {
 }
 
 async function crawl(baseUrl: string, context: BrowserContext): Promise<{ urls: string[]; flows: Flow[] }> {
-  const maxPages = Number(args["max-pages"]) || 60;
+  const maxPages = harnessConfig.maxPages;
+  const maxDepth = harnessConfig.crawlDepth;
   const visited = new Set<string>();
-  const queue: string[] = [baseUrl];
+  const queue: Array<{ url: string; depth: number }> = [{ url: baseUrl, depth: 0 }];
   const urls: string[] = [];
   const flows: Flow[] = [];
 
@@ -157,7 +186,7 @@ async function crawl(baseUrl: string, context: BrowserContext): Promise<{ urls: 
   ];
 
   while (queue.length > 0 && visited.size < maxPages) {
-    const url = queue.shift()!;
+    const { url, depth } = queue.shift()!;
     if (visited.has(url)) continue;
     visited.add(url);
 
@@ -186,21 +215,24 @@ async function crawl(baseUrl: string, context: BrowserContext): Promise<{ urls: 
         }))
       );
 
-      const links = await page.$$eval("a[href]", (els) =>
-        els
-          .map((el) => el.getAttribute("href"))
-          .filter((h): h is string => {
-            if (!h) return false;
-            return !h.startsWith("#") && !h.startsWith("javascript");
-          })
-      );
+      // Only follow links while below the configured crawl depth.
+      if (depth < maxDepth) {
+        const links = await page.$$eval("a[href]", (els) =>
+          els
+            .map((el) => el.getAttribute("href"))
+            .filter((h): h is string => {
+              if (!h) return false;
+              return !h.startsWith("#") && !h.startsWith("javascript");
+            })
+        );
 
-      for (const link of links) {
-        try {
-          const full = new URL(link, baseUrl).href;
-          if (full.startsWith(baseUrl) && !visited.has(full)) queue.push(full);
-        } catch {
-          // ignore invalid URLs
+        for (const link of links) {
+          try {
+            const full = new URL(link, baseUrl).href;
+            if (isCrawlable(full, baseUrl) && !visited.has(full)) queue.push({ url: full, depth: depth + 1 });
+          } catch {
+            // ignore invalid URLs
+          }
         }
       }
 
@@ -264,9 +296,35 @@ async function crawl(baseUrl: string, context: BrowserContext): Promise<{ urls: 
   return { urls, flows };
 }
 
-async function detectTechStack(baseUrl: string, context: BrowserContext): Promise<Record<string, string>> {
+/** Known AI/LLM signatures looked for in page HTML/JS. */
+const AI_SIGNATURES: Array<[RegExp, string]> = [
+  [/openai|chatgpt|gpt-[34]/i, "OpenAI integration"],
+  [/anthropic|claude\.ai|\bclaude\b/i, "Anthropic Claude integration"],
+  [/\/v1\/chat\/completions/i, "LLM chat-completions endpoint"],
+  [/langchain/i, "LangChain framework"],
+  [/copilot/i, "Copilot widget"],
+  [/hugging\s*face|huggingface/i, "Hugging Face integration"],
+  [/gemini|makersuite|generativelanguage/i, "Google Gemini integration"],
+  [/cohere/i, "Cohere integration"],
+  [/intercom|drift|zendesk.*chat|chat-widget|chatbot/i, "Embedded chat widget (possible LLM backend)"],
+];
+
+/** Detect AI/LLM features in raw HTML/JS source. Returns human-readable labels. */
+export function detectAiFeatures(source: string): string[] {
+  const found: string[] = [];
+  for (const [pattern, label] of AI_SIGNATURES) {
+    if (pattern.test(source)) found.push(label);
+  }
+  return found;
+}
+
+async function detectTechStack(
+  baseUrl: string,
+  context: BrowserContext
+): Promise<{ signals: Record<string, string>; aiFeatures: string[] }> {
   const page = await context.newPage();
   const signals: Record<string, string> = {};
+  let aiFeatures: string[] = [];
   let cloudProvider = "unknown";
 
   try {
@@ -287,16 +345,22 @@ async function detectTechStack(baseUrl: string, context: BrowserContext): Promis
     else signals.api = "REST";
 
     signals.cloud = cloudProvider;
+    aiFeatures = detectAiFeatures(src);
   } catch {
     // ignore
   } finally {
     await page.close();
   }
 
-  return signals;
+  return { signals, aiFeatures };
 }
 
-function buildAppProfile(baseUrl: string, crawlResult: { urls: string[]; flows: Flow[] }, techSignals: Record<string, string>): AppProfile {
+function buildAppProfile(
+  baseUrl: string,
+  crawlResult: { urls: string[]; flows: Flow[] },
+  techSignals: Record<string, string>,
+  aiFeatures: string[]
+): AppProfile {
   const highValueFlows = crawlResult.flows
     .filter((f) => f.trust_boundary_crossings.length > 0)
     .flatMap((f) =>
@@ -342,6 +406,7 @@ function buildAppProfile(baseUrl: string, crawlResult: { urls: string[]; flows: 
     high_value_flows: highValueFlows,
     attack_priority_order: uniqueAgents,
     trust_boundary_crossings: [...new Set(crawlResult.flows.flatMap((f) => f.trust_boundary_crossings))],
+    ai_llm_features: aiFeatures,
     all_discovered_urls: crawlResult.urls,
     timestamp: new Date().toISOString(),
   };
@@ -379,12 +444,15 @@ async function testXSS(url: string, context: BrowserContext, screenshotsDir: str
               await page.screenshot({ path: screenshotPath });
               findings.push({
                 type: "XSS",
+                title: `Reflected XSS in parameter "${inputName}"`,
+                severity: "high",
+                cvss: 8.0,
+                confirmed: true,
                 url,
                 parameter: inputName,
-                payload,
+                poc: payload,
                 evidence: `Page title changed to: ${title}`,
-                cvss_estimate: 8.0,
-                confirmed: true,
+                description: `Payload reflected and executed in parameter "${inputName}" on ${url}.`,
                 timestamp: new Date().toISOString(),
               });
             }
@@ -403,30 +471,107 @@ async function testXSS(url: string, context: BrowserContext, screenshotsDir: str
   return findings;
 }
 
+const PROTECTED_KEYWORDS = /dashboard|profile|admin|settings|account|billing/i;
+const AUTH_ONLY_MARKERS = /logout|log out|sign out|my account|welcome back/i;
+
 async function testAuthBypass(protectedUrls: string[], context: BrowserContext): Promise<Finding[]> {
   const findings: Finding[] = [];
   const page = await context.newPage();
   try {
     for (const url of protectedUrls) {
       try {
-        await page.goto(url, { timeout: 10000 });
-        const body = await page.textContent("body") || "";
-        if (/dashboard|profile|admin|settings|account|billing/i.test(body)) {
-          findings.push({
-            type: "AUTH_BYPASS",
-            url,
-            evidence: "Protected page accessible without authentication",
-            cvss_estimate: 8.5,
-            confirmed: true,
-            timestamp: new Date().toISOString(),
-          });
-        }
+        const response = await page.goto(url, { timeout: 10000, waitUntil: "domcontentloaded" });
+        const status = response?.status() ?? 0;
+        const finalUrl = page.url();
+        const body = (await page.textContent("body")) || "";
+        if (!PROTECTED_KEYWORDS.test(body)) continue;
+
+        // A keyword match alone is a lead, not a finding: login pages and error
+        // pages routinely contain words like "account". Higher confidence
+        // requires a 200, no login form, no redirect to a login page, and
+        // authenticated-only markers (logout links etc.) in the body.
+        const hasLoginForm = (await page.$('input[type="password"]')) !== null;
+        const redirectedToLogin = /login|signin/i.test(finalUrl) && !/login|signin/i.test(url);
+        const hasAuthMarkers = AUTH_ONLY_MARKERS.test(body);
+        const strongSignal = status === 200 && !hasLoginForm && !redirectedToLogin && hasAuthMarkers;
+
+        findings.push({
+          type: "AUTH_BYPASS",
+          title: strongSignal
+            ? "Protected page appears accessible without authentication"
+            : "Possible unauthenticated access to protected page (unverified lead)",
+          severity: strongSignal ? "high" : "medium",
+          cvss: strongSignal ? 7.5 : 5.0,
+          confirmed: false,
+          url,
+          evidence: strongSignal
+            ? `HTTP ${status}, no login form, no login redirect, authenticated-only markers present`
+            : `Keyword match on protected path (HTTP ${status}${hasLoginForm ? ", login form present" : ""}${redirectedToLogin ? ", redirected to login" : ""}) — manual verification required`,
+          description: `Protected-looking page ${url} returned protected keywords without authentication.${
+            strongSignal ? " Strong signal: page rendered authenticated content." : " Weak signal: keyword match only."
+          }`,
+          timestamp: new Date().toISOString(),
+        });
       } catch {
         // ignore
       }
     }
   } finally {
     await page.close();
+  }
+  return findings;
+}
+
+/** Rough body similarity: 1.0 = identical, otherwise based on relative length difference. */
+function bodySimilarity(a: string, b: string): number {
+  if (a === b) return 1;
+  const maxLen = Math.max(a.length, b.length);
+  if (maxLen === 0) return 1;
+  return 1 - Math.abs(a.length - b.length) / maxLen;
+}
+
+/**
+ * Minimal IDOR / missing-authorization check: re-request each parameterized
+ * endpoint with the authenticated context and a fresh unauthenticated context,
+ * and flag endpoints that return 200 with a near-identical body to both.
+ */
+async function testIdor(urls: string[], authContext: BrowserContext, browser: Browser): Promise<Finding[]> {
+  const findings: Finding[] = [];
+  const parameterized = urls.filter((u) => /[?&][^=]+=[^&]+/.test(u) || /\/\d+(?:\/|$)/.test(u));
+  if (parameterized.length === 0) return findings;
+
+  const unauthContext = await browser.newContext({ ignoreHTTPSErrors: true });
+  try {
+    for (const url of parameterized.slice(0, 30)) {
+      try {
+        const [authResp, unauthResp] = await Promise.all([
+          authContext.request.get(url, { timeout: 10000 }),
+          unauthContext.request.get(url, { timeout: 10000 }),
+        ]);
+        if (authResp.status() !== 200 || unauthResp.status() !== 200) continue;
+
+        const authBody = await authResp.text();
+        const unauthBody = await unauthResp.text();
+        const similarity = bodySimilarity(authBody, unauthBody);
+        if (similarity >= 0.9) {
+          findings.push({
+            type: "IDOR",
+            title: "Parameterized endpoint accessible without authentication",
+            severity: "medium",
+            cvss: 5.3,
+            confirmed: false,
+            url,
+            evidence: `Unauthenticated request returned HTTP 200 with a body ${Math.round(similarity * 100)}% similar to the authenticated response (${authBody.length} vs ${unauthBody.length} bytes)`,
+            description: `${url} returned equivalent content to an unauthenticated client. Possible missing authorization check — verify object-level access control manually with a second account.`,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      } catch {
+        // ignore request errors
+      }
+    }
+  } finally {
+    await unauthContext.close();
   }
   return findings;
 }
@@ -447,34 +592,85 @@ function buildMinimalProfile(baseUrl: string): AppProfile {
     high_value_flows: [],
     attack_priority_order: [],
     trust_boundary_crossings: [],
+    ai_llm_features: [],
     all_discovered_urls: [baseUrl],
     timestamp: new Date().toISOString(),
   };
 }
 
 async function main() {
-  if (!args.target) {
+  const { values: args } = parseArgs({
+    args: Bun.argv.slice(2),
+    options: {
+      target: { type: "string" },
+      proxy: { type: "string", default: "http://127.0.0.1:8080" },
+      "auth-cookie": { type: "string", default: "" },
+      "auth-token": { type: "string", default: "" },
+      "crawl-depth": { type: "string", default: "3" },
+      mode: { type: "string", default: "test" },
+      "test-xss": { type: "boolean", default: false },
+      "test-auth-bypass": { type: "boolean", default: false },
+      "test-idor": { type: "boolean", default: false },
+      screenshots: { type: "string", default: "" },
+      output: { type: "string", default: "" },
+      headless: { type: "boolean", default: true },
+      // Show the browser window (overrides --headless).
+      headful: { type: "boolean", default: false },
+      "max-pages": { type: "string", default: "60" },
+      // Chromium sandbox is on by default; --no-sandbox opts out (e.g. as root).
+      "no-sandbox": { type: "boolean", default: false },
+      // Optional target-config JSON; when set, the target is asserted in scope
+      // and crawled links outside scope are skipped.
+      "scope-config": { type: "string" },
+    },
+  });
+
+  harnessConfig.target = args.target;
+  harnessConfig.proxy = args.proxy;
+  harnessConfig.authCookie = args["auth-cookie"];
+  harnessConfig.authToken = args["auth-token"];
+  harnessConfig.crawlDepth = Number(args["crawl-depth"]) || 3;
+  harnessConfig.mode = args.mode;
+  harnessConfig.testXss = args["test-xss"];
+  harnessConfig.testAuthBypass = args["test-auth-bypass"];
+  harnessConfig.testIdor = args["test-idor"];
+  harnessConfig.screenshots = args.screenshots;
+  harnessConfig.output = args.output;
+  harnessConfig.headless = args.headful ? false : args.headless;
+  harnessConfig.maxPages = Number(args["max-pages"]) || 60;
+  harnessConfig.noSandbox = args["no-sandbox"];
+  harnessConfig.scopeConfig = args["scope-config"];
+
+  if (!harnessConfig.target) {
     console.error("Usage: bun playwright-harness.ts --target https://example.com [options]");
     process.exit(1);
+  }
+
+  if (harnessConfig.scopeConfig) {
+    harnessConfig.scope = await loadScopeFromConfig(harnessConfig.scopeConfig);
+    assertInScope(harnessConfig.target, harnessConfig.scope); // throws ScopeError on violation
+    console.log(`[*] Scope enforcement active: ${scopeSummary(harnessConfig.scope)}`);
+  } else {
+    console.error("[*] WARNING: no --scope-config provided; crawling without scope enforcement");
   }
 
   const screenshotsDir = resolveScreenshotsDir();
   await Bun.write(`${screenshotsDir}/.gitkeep`, "");
 
   console.log(`[*] BugHunter Browser Harness — engine: Playwright`);
-  console.log(`[*] Target: ${args.target}`);
-  console.log(`[*] Proxy: ${args.proxy || "none"}`);
-  console.log(`[*] Mode: ${args.mode}`);
+  console.log(`[*] Target: ${harnessConfig.target}`);
+  console.log(`[*] Proxy: ${harnessConfig.proxy || "none"}`);
+  console.log(`[*] Mode: ${harnessConfig.mode}`);
 
   const browser = await createBrowser();
   const context = await createContext(browser);
 
   try {
-    if (args.mode === "map-flows") {
+    if (harnessConfig.mode === "map-flows") {
       console.log("[*] MODE: map-flows — Observation only, no payloads");
-      const crawlResult = await crawl(args.target, context);
-      const techSignals = await detectTechStack(args.target, context);
-      const appProfile = buildAppProfile(args.target, crawlResult, techSignals);
+      const crawlResult = await crawl(harnessConfig.target, context);
+      const { signals: techSignals, aiFeatures } = await detectTechStack(harnessConfig.target, context);
+      const appProfile = buildAppProfile(harnessConfig.target, crawlResult, techSignals, aiFeatures);
 
       const outputPath = resolveOutputPath("app-profile.json");
       await Bun.write(outputPath, JSON.stringify(appProfile, null, 2));
@@ -482,6 +678,9 @@ async function main() {
       console.log(`[+] Discovered ${appProfile.all_discovered_urls.length} URLs`);
       console.log(`[+] Found ${appProfile.high_value_flows.length} high-value flows`);
       console.log(`[+] Attack priority order: ${appProfile.attack_priority_order.join(", ")}`);
+      if (appProfile.ai_llm_features.length > 0) {
+        console.log(`[+] AI/LLM features detected: ${appProfile.ai_llm_features.join(", ")}`);
+      }
 
       console.log("\n[*] TOP PRIORITY FLOWS:");
       appProfile.high_value_flows
@@ -495,17 +694,17 @@ async function main() {
     } else {
       const findings: Finding[] = [];
       console.log("[*] Crawling application...");
-      const crawlResult = await crawl(args.target, context);
+      const crawlResult = await crawl(harnessConfig.target, context);
       console.log(`[+] Discovered ${crawlResult.urls.length} endpoints`);
 
-      if (args["test-xss"]) {
+      if (harnessConfig.testXss) {
         console.log("[*] Testing for XSS...");
         for (const url of crawlResult.urls.slice(0, 50)) {
           findings.push(...(await testXSS(url, context, screenshotsDir)));
         }
       }
 
-      if (args["test-auth-bypass"]) {
+      if (harnessConfig.testAuthBypass) {
         console.log("[*] Testing for auth bypass...");
         const protectedPaths = crawlResult.urls.filter((u) =>
           /admin|dashboard|profile|settings|account|billing|private/i.test(u)
@@ -513,24 +712,31 @@ async function main() {
         findings.push(...(await testAuthBypass(protectedPaths, context)));
       }
 
+      if (harnessConfig.testIdor) {
+        console.log("[*] Testing for IDOR / missing authorization...");
+        findings.push(...(await testIdor(crawlResult.urls, context, browser)));
+      }
+
+      const criticalFindings = findings.filter((f) => f.cvss >= 8.0 || f.severity === "critical");
       const outputPath = resolveOutputPath("playwright-findings.json");
       await Bun.write(
         outputPath,
         JSON.stringify(
           {
-            target: args.target,
+            target: harnessConfig.target,
             engine: "playwright",
+            generated_at: new Date().toISOString(),
             endpoints_discovered: crawlResult.urls.length,
-            findings: findings.filter((f) => f.cvss_estimate >= 8.0),
             total_findings: findings.length,
-            high_severity_findings: findings.filter((f) => f.cvss_estimate >= 8.0).length,
+            findings,
+            critical_findings: criticalFindings,
             timestamp: new Date().toISOString(),
           },
           null,
           2
         )
       );
-      console.log(`[+] Complete. ${findings.length} findings → ${outputPath}`);
+      console.log(`[+] Complete. ${findings.length} findings (${criticalFindings.length} critical) → ${outputPath}`);
     }
   } finally {
     await browser.close();

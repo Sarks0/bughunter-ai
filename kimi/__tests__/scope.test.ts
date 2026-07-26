@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { isInScope, parseBurpScope, loadScopeFromConfig, type Scope } from "../Tools/lib/scope.ts";
+import { isInScope, assertInScope, ScopeError, parseBurpScope, loadScopeFromConfig, type Scope } from "../Tools/lib/scope.ts";
 import { mkdtempSync, writeFileSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -155,5 +155,128 @@ describe("loadScopeFromConfig", () => {
     expect(scope.out).toContain("https://admin.example.com/");
 
     rmSync(tmpDir, { recursive: true, force: true });
+  });
+});
+
+describe("host glob semantics", () => {
+  it("apex pattern matches the apex host only, not subdomains", () => {
+    const scope: Scope = { in: ["example.com"], out: [] };
+    expect(isInScope("https://example.com/", scope).inScope).toBe(true);
+    expect(isInScope("https://www.example.com/", scope).inScope).toBe(false);
+    expect(isInScope("https://deep.sub.example.com/", scope).inScope).toBe(false);
+  });
+
+  it("*.example.com matches the apex AND any depth of subdomain", () => {
+    const scope: Scope = { in: ["*.example.com"], out: [] };
+    expect(isInScope("https://example.com/", scope).inScope).toBe(true);
+    expect(isInScope("https://www.example.com/", scope).inScope).toBe(true);
+    expect(isInScope("https://a.b.c.example.com/", scope).inScope).toBe(true);
+  });
+
+  it("in-label * matches within a single label only (regression: cdn*.example.com)", () => {
+    const scope: Scope = { in: ["cdn*.example.com"], out: [] };
+    expect(isInScope("https://cdn1.example.com/", scope).inScope).toBe(true);
+    expect(isInScope("https://cdn-eu.example.com/", scope).inScope).toBe(true);
+    expect(isInScope("https://cdn.example.com/", scope).inScope).toBe(true);
+    // Must not cross a dot boundary.
+    expect(isInScope("https://cdn.foo.example.com/", scope).inScope).toBe(false);
+    expect(isInScope("https://other.example.com/", scope).inScope).toBe(false);
+  });
+
+  it("in-label ? matches exactly one character within a label", () => {
+    const scope: Scope = { in: ["api?.example.com"], out: [] };
+    expect(isInScope("https://api1.example.com/", scope).inScope).toBe(true);
+    expect(isInScope("https://api2.example.com/", scope).inScope).toBe(true);
+    expect(isInScope("https://api12.example.com/", scope).inScope).toBe(false);
+    expect(isInScope("https://api.example.com/", scope).inScope).toBe(false);
+    expect(isInScope("https://api1.foo.example.com/", scope).inScope).toBe(false);
+  });
+
+  it("matching is case-insensitive on the host", () => {
+    const scope: Scope = { in: ["*.Example.COM"], out: [] };
+    expect(isInScope("https://WWW.EXAMPLE.COM/", scope).inScope).toBe(true);
+  });
+
+  it("rejects evil-suffix hosts for both apex and wildcard patterns", () => {
+    const apexScope: Scope = { in: ["example.com"], out: [] };
+    const wildScope: Scope = { in: ["*.example.com"], out: [] };
+    expect(isInScope("https://example.com.evil.com/", apexScope).inScope).toBe(false);
+    expect(isInScope("https://example.com.evil.com/", wildScope).inScope).toBe(false);
+    expect(isInScope("https://www.example.com.evil.com/", wildScope).inScope).toBe(false);
+  });
+});
+
+describe("URL glob semantics", () => {
+  const scope: Scope = { in: ["https://api.example.com/*"], out: [] };
+
+  it("matches any path on the origin", () => {
+    expect(isInScope("https://api.example.com/", scope).inScope).toBe(true);
+    expect(isInScope("https://api.example.com/v1/users", scope).inScope).toBe(true);
+    expect(isInScope("https://api.example.com/a/b/c?x=1", scope).inScope).toBe(true);
+  });
+
+  it("does not match an evil-suffix host", () => {
+    expect(isInScope("https://api.example.com.evil.com/x", scope).inScope).toBe(false);
+  });
+
+  it("does not match a different scheme or host", () => {
+    expect(isInScope("https://other.example.com/v1", scope).inScope).toBe(false);
+    expect(isInScope("http://api.example.com/v1", scope).inScope).toBe(false);
+  });
+
+  it("anchored URL pattern without trailing glob still rejects host extension", () => {
+    const bareScope: Scope = { in: ["https://api.example.com"], out: [] };
+    expect(isInScope("https://api.example.com/", bareScope).inScope).toBe(true);
+    expect(isInScope("https://api.example.com/path", bareScope).inScope).toBe(true);
+    expect(isInScope("https://api.example.com.evil.com/x", bareScope).inScope).toBe(false);
+  });
+});
+
+describe("out-of-scope precedence", () => {
+  it("out patterns win even when an in pattern also matches", () => {
+    const scope: Scope = { in: ["*.example.com"], out: ["example.com"] };
+    expect(isInScope("https://example.com/", scope).inScope).toBe(false);
+    expect(isInScope("https://www.example.com/", scope).inScope).toBe(true);
+  });
+
+  it("out URL globs win over broader in host globs", () => {
+    const scope: Scope = { in: ["*.example.com"], out: ["https://api.example.com/admin/*"] };
+    const result = isInScope("https://api.example.com/admin/panel", scope);
+    expect(result.inScope).toBe(false);
+    expect(result.reason).toContain("OUT OF SCOPE");
+    expect(isInScope("https://api.example.com/public", scope).inScope).toBe(true);
+  });
+});
+
+describe("assertInScope", () => {
+  const scope: Scope = { in: ["*.example.com"], out: ["blog.example.com"] };
+
+  it("returns normally for in-scope URLs", () => {
+    expect(() => assertInScope("https://api.example.com/v1", scope)).not.toThrow();
+    expect(() => assertInScope("https://example.com/", scope)).not.toThrow();
+  });
+
+  it("throws ScopeError for URLs matching no in-scope pattern", () => {
+    expect(() => assertInScope("https://evil.com/", scope)).toThrow(ScopeError);
+    expect(() => assertInScope("https://evil.com/", scope)).toThrow(/NOT IN SCOPE/);
+  });
+
+  it("throws ScopeError for out-of-scope URLs, with target and reason attached", () => {
+    try {
+      assertInScope("https://blog.example.com/", scope);
+      expect.unreachable("should have thrown");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ScopeError);
+      expect(err).toBeInstanceOf(Error);
+      const scopeErr = err as ScopeError;
+      expect(scopeErr.name).toBe("ScopeError");
+      expect(scopeErr.target).toBe("https://blog.example.com/");
+      expect(scopeErr.reason).toContain("OUT OF SCOPE");
+      expect(scopeErr.message).toContain("blog.example.com");
+    }
+  });
+
+  it("does not throw when no scope is configured", () => {
+    expect(() => assertInScope("https://anything.example/", { in: [], out: [] })).not.toThrow();
   });
 });

@@ -4,7 +4,7 @@
   "trigger": "Recon-only request",
   "phases": [
     { "name": "RECON", "blocking": true, "agents": ["ReconAgent", "SubdomainTakeoverAgent"], "tools": ["subfinder", "httpx", "naabu", "nuclei", "gowitness"], "gates": [] },
-    { "name": "LEARNING", "blocking": true, "agents": [], "tools": [], "gates": [] },
+    { "name": "VALIDATION", "blocking": true, "agents": [], "tools": ["validate-finding"], "gates": [] },
     { "name": "REPORT", "blocking": true, "agents": [], "tools": ["generate-report"], "gates": [] }
   ]
 }

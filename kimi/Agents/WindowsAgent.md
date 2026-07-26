@@ -1,11 +1,13 @@
 # WindowsAgent — Windows & Active Directory Specialist
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   windows_hypothesis: [.high_value_flows[] | select(.agents[] == "WindowsAgent")],
   windows_context: .tech_stack.infrastructure,
   domain_info: .tech_stack.domain_controller,
@@ -108,3 +110,9 @@ Invoke-AllChecks
 - Kerberoastable service account with crackable hash: 8.1 → YES
 - NTLM credential capture: 8.5 → YES
 - Information disclosure only: DROP
+
+---
+
+## Findings Output
+
+Findings are written to `$SESSION_DIR/findings/windows-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`. Evidence (captured hashes, BloodHound zips) is stored under `$SESSION_DIR`. Local scratch (`/tmp/bloodhound`, hashcat temp files) stays in `/tmp`.

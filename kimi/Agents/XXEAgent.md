@@ -1,11 +1,14 @@
 # XXEAgent — XML External Entity Injection Specialist
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+# $SESSION_DIR = kimi-data/Sessions/{slug}/ (the current hunt session dir)
+cat $SESSION_DIR/app-profile.json | jq '{
   xxe_hypothesis: [.high_value_flows[] | select(.agents[] == "XXEAgent")],
   xml_surfaces: [.high_value_flows[] | select(.why_interesting | test("xml|svg|docx|xlsx|saml|soap|upload|import|rss|feed|sitemap"; "i"))],
   tech_stack: {framework: .tech_stack.framework, parsers: .tech_stack.file_processing},
@@ -28,7 +31,8 @@ cat /tmp/app-profile.json | jq '{
 ## XXE Injection Points
 ```bash
 # Find XML-accepting endpoints
-cat /tmp/bb-urls.txt | while read URL; do
+# produced by: gau $TARGET | waymore -i $TARGET -mode U ... > $SESSION_DIR/recon/urls.txt
+cat $SESSION_DIR/recon/urls.txt | while read URL; do
   curl -sk -o /dev/null -w "%{http_code}" "$URL" \
     -H "Content-Type: application/xml" \
     -d '<?xml version="1.0"?><test>ping</test>' | grep -E "200|500"
@@ -83,3 +87,7 @@ SAML=$(echo $SAML_RESPONSE | base64 -d | zlib-flate -uncompress 2>/dev/null)
 - XXE → AWS metadata: 9.8 → YES
 - XXE → internal SSRF pivot: 8.8 → YES
 - XXE → RCE chain: 10.0 → YES
+
+## Findings Output
+
+All confirmed findings are written to `$SESSION_DIR/findings/xxe-findings.json` as a single object of shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each finding records the injection point, payload, exfiltrated evidence, and severity from the table above.

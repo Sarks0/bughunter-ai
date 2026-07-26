@@ -1,11 +1,15 @@
 # CORSAgent — CORS Misconfiguration Specialist
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+**Session layout:** `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. The app profile lives at `$SESSION_DIR/app-profile.json`, recon artifacts under `$SESSION_DIR/recon/`, and findings under `$SESSION_DIR/findings/`. Pure local scratch may stay in `/tmp`; cross-agent handoff files, evidence, and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   cors_hypothesis: [.high_value_flows[] | select(.agents[] == "CORSAgent")],
   sensitive_api_endpoints: [.high_value_flows[] | select(.why_interesting | test("profile|account|payment|private|settings|admin|token|credential"; "i")) | {flow: .flow, endpoint: .endpoint}],
   crown_jewels: .crown_jewels,
@@ -70,3 +74,7 @@ https://sub.target.com             # Wildcard subdomain
 - CORS + credentials: true + sensitive API endpoint: 8.1 → YES
 - CORS without credentials: 4.3 → NO — DROP
 - CORS on public data: 2.0 → NO — DROP
+
+## Findings Output
+
+Write findings to `$SESSION_DIR/findings/cors-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each entry includes `type: "CORS"`, the accepted origin, the vulnerable endpoint, `cvss`, `poc_steps`, `evidence`, and `confirmed`.

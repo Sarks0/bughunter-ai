@@ -57,9 +57,21 @@ This is a **port** of the original `skills/BugBountyFramework/` skill. The origi
 | `Tools/appium-harness.ts` | Mobile app testing harness |
 | `Tools/generate-report.ts` | Report generation from findings |
 
+The orchestrator can also health-check the external toolset used by the agents
+(`subfinder`, `httpx`, `naabu`, `nuclei`, `ffuf`, `katana`, `gau`, `waymore`,
+`jsluice`, `arjun`, `kiterunner`/`kr`, `trufflehog`, `interactsh-client`,
+`graphql-cop`, `grpc_cli`, `garak`, `pyrit`, `promptfoo`, `adb`/`aapt`/`frida`,
+and more — see `Tools/lib/tool-validator.ts`):
+
+```bash
+bun kimi/Tools/hunt-orchestrator.ts --target https://target.example.com --validate-tools
+```
+
+See `SETUP.md` for install notes.
+
 ## Agents
 
-All 28 specialized agent prompts live in `kimi/Agents/`. They are derived from the original Claude agent files with Claude-specific references removed.
+All 27 specialized agent prompts live in `kimi/Agents/`. They are derived from the original Claude agent files with Claude-specific references removed.
 
 ## Testing
 
@@ -70,6 +82,6 @@ bun test
 
 ## TODO / known gaps
 
-- Credential vault uses base64 encoding by default. For production use, prefer the 1Password `op` CLI integration or set `BH_VAULT_PASSPHRASE` to enable AES-256-GCM encryption.
+- The credential vault encrypts with AES-256-GCM by default (passphrase via interactive prompt, `BH_VAULT_PASSPHRASE`, `--passphrase-file`, or `--passphrase`); `--plain` is an explicit insecure fallback for testing only. A 1Password `op` CLI integration is also available via `--op-item`.
 - iOS mobile testing is stubbed; Android dynamic analysis requires a rooted/debuggable device or emulator.
 - External recon tools are not auto-installed; run the dependency check in `SETUP.md`.

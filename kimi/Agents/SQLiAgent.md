@@ -2,12 +2,15 @@
 
 **Mandate:** Confirm SQLi with actual data extraction. No theoreticals. Focus on: pre-auth SQLi, SQLi → RCE, second-order SQLi, SQLi in APIs and JSON bodies.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+# $SESSION_DIR = kimi-data/Sessions/{slug}/ (the current hunt session dir)
+cat $SESSION_DIR/app-profile.json | jq '{
   sqli_hypothesis: (.high_value_flows[] | select(.agents[] == "SQLiAgent")),
   tech_stack: .tech_stack,
   database: .tech_stack.database
@@ -30,14 +33,17 @@ cat /tmp/app-profile.json | jq '{
 
 ### 1. Injection Point Discovery
 ```bash
+# produced by: gau $TARGET | waymore -i $TARGET -mode U ... > $SESSION_DIR/recon/urls.txt
+#              cat $SESSION_DIR/recon/urls.txt | unfurl --unique keys > $SESSION_DIR/recon/params.txt
+
 # Parameter extraction from URLs
-cat /tmp/bb-urls.txt | gf sqli | tee /tmp/sqli-candidates.txt
+cat $SESSION_DIR/recon/urls.txt | gf sqli | tee $SESSION_DIR/recon/sqli-candidates.txt
 
 # Also test: JSON bodies, XML params, HTTP headers, cookies
 # Headers to test: X-Forwarded-For, User-Agent, Referer, X-Custom-IP
 
 # API endpoint parameter mining
-cat /tmp/bb-urls.txt | unfurl --unique keys | tee /tmp/sqli-params.txt
+cat $SESSION_DIR/recon/urls.txt | unfurl --unique keys | tee $SESSION_DIR/recon/sqli-params.txt
 ```
 
 ### 2. Detection Payloads
@@ -96,7 +102,7 @@ sqlmap -u "https://$TARGET/page?id=1" \
   --cookie="$SESSION_COOKIE" \
   --technique=BEUSTQ \
   --random-agent \
-  --output-dir=/tmp/sqlmap/
+  --output-dir=$SESSION_DIR/sqlmap/
 
 # POST body testing
 sqlmap -u "https://$TARGET/api/user" \
@@ -172,6 +178,9 @@ POST /_search {"query":{"match_all":{}}}
 | Error message only | 5.0 | NO — DROP |
 
 ## Output Format
+
+All confirmed findings are written to `$SESSION_DIR/findings/sqli-findings.json` as a single object of shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each finding follows:
+
 ```json
 {
   "type": "SQLi",

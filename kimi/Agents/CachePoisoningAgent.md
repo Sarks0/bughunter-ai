@@ -2,12 +2,16 @@
 
 **Mandate:** Find HIGH/CRITICAL cache poisoning and cache deception vulnerabilities. Focus on: poisoning cached responses to serve XSS/redirects to all users, cache deception to steal sensitive data. Must confirm the response is actually cached and served to other users.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+`$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. Pure local scratch may stay in /tmp; cross-agent handoff files, evidence and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   app_narrative: .app_narrative,
   tech_stack: .tech_stack,
   crown_jewels: .crown_jewels
@@ -132,14 +136,17 @@ curl -s "https://target.com/account/settings%23.js"
 ### 6. Automated Scanning
 
 ```bash
-# param-miner (Burp extension) — auto-discover unkeyed inputs
-# Run via Burp: Extensions → Param Miner → Guess Headers
+# Unkeyed parameter/header discovery (CLI)
+arjun -u https://target.com/ --get -oT $SESSION_DIR/findings/arjun-params.txt
+
+# MANUAL ANALYST STEP (Burp GUI only — not runnable by the autonomous agent):
+# param-miner (Burp extension) → Extensions → Param Miner → Guess Headers.
 
 # Web Cache Vulnerability Scanner
-wcvs -u https://target.com/ -o /tmp/cache-results.json
+wcvs -u https://target.com/ -o $SESSION_DIR/findings/cache-results.json
 
 # nuclei cache poisoning templates
-nuclei -u https://target.com -t http/cves/ -t http/vulnerabilities/cache-poisoning/ -o /tmp/nuclei-cache.json
+nuclei -u https://target.com -t http/cves/ -t http/vulnerabilities/cache-poisoning/ -o $SESSION_DIR/findings/nuclei-cache.json
 ```
 
 ## Severity Classification
@@ -154,6 +161,9 @@ nuclei -u https://target.com -t http/cves/ -t http/vulnerabilities/cache-poisoni
 | Cache key info disclosure (debug header) | 3.0 | NO — DROP |
 
 ## Output Format
+
+Writes `$SESSION_DIR/findings/cache-poisoning-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each entry in `findings` is:
+
 ```json
 {
   "type": "CACHE_POISONING",

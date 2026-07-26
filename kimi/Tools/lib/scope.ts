@@ -3,10 +3,16 @@
  * Scope matching and platform scope import utilities.
  *
  * Scope patterns are globs by default:
- *   - `*.example.com`          matches any subdomain of example.com
- *   - `example.com`            matches example.com exactly
- *   - `https://api.example.com/*` matches URLs under that host
+ *   - `example.com`            matches the apex host only (example.com), NOT subdomains
+ *   - `*.example.com`          matches example.com AND any subdomain (one or more labels)
+ *   - `cdn*.example.com`       `*`/`?` inside a label match within that label only
+ *                              (`*` -> `[^.]*`, `?` -> `[^.]`); wildcards never cross dots
+ *   - `https://api.example.com/*` matches any path on that origin (anchored:
+ *                              does NOT match `https://api.example.com.evil.com/x`)
  *   - `/.*\.example\.com$/`   regex literal (wrapped in /.../)
+ *
+ * Host matching is case-insensitive. Out-of-scope patterns take precedence
+ * over in-scope patterns.
  */
 
 import { join, dirname } from "path";
@@ -27,20 +33,54 @@ export interface ScopeCheckResult {
 }
 
 function escapeRegex(str: string): string {
-  return str.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  // Escapes EVERY regex metacharacter, including `*` and `?`. Glob handling
+  // below then rewrites the escaped forms `\*` / `\?` back into wildcards.
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Convert one hostname label to regex. `*` -> `[^.]*`, `?` -> `[^.]` (never crosses dots). */
+function labelToRegex(label: string): string {
+  if (label === "*") return "[^.]+"; // a full-label wildcard matches exactly one label
+  return escapeRegex(label).replace(/\\\*/g, "[^.]*").replace(/\\\?/g, "[^.]");
+}
+
+/** Regex source (unanchored) for a hostname glob. See header for semantics. */
+function hostGlobSource(host: string): string {
+  const labels = host.trim().toLowerCase().split(".");
+  if (labels[0] === "*") {
+    // Leading `*.` matches the bare domain AND any depth of subdomains.
+    const rest = labels.slice(1);
+    if (rest.length === 0) return ".+"; // pattern is just "*"
+    return `(?:[^.]+\\.)*${rest.map(labelToRegex).join("\\.")}`;
+  }
+  // No leading wildcard: match the host exactly, label for label.
+  return labels.map(labelToRegex).join("\\.");
 }
 
 function globToHostRegex(pattern: string): string {
-  const segments = pattern.split(".").map((seg) => (seg === "*" ? "[^.]+" : escapeRegex(seg).replace(/\\\*/g, "[^.]*").replace(/\\\?/g, ".")));
-  return `^(?:[^.]+\\.)*${segments.join("\\.")}$`;
+  return `^${hostGlobSource(pattern)}$`;
+}
+
+/** Convert the non-host parts of a URL glob (scheme, path). `**` -> `.*`, `*` -> `[^?#]*`, `?` -> `[^?#]`. */
+function urlGlobSource(text: string): string {
+  return escapeRegex(text)
+    .replace(/\\\*\\\*/g, ".*")
+    .replace(/\\\*/g, "[^?#]*")
+    .replace(/\\\?/g, "[^?#]");
 }
 
 function globToUrlRegex(pattern: string): string {
-  let regex = escapeRegex(pattern)
-    .replace(/\\\*\\\*/g, ".*")
-    .replace(/\\\*/g, "[^?#]*")
-    .replace(/\\\?/g, ".");
-  return `^${regex}`;
+  const trimmed = pattern.trim();
+  // Split into scheme, host, and the remainder (port/path/query). The host
+  // gets strict host-glob semantics and a boundary lookahead, so
+  // `https://api.example.com/*` can never match `https://api.example.com.evil.com/x`.
+  const match = trimmed.match(/^([^/]*):\/\/([^/?#:]*)(.*)$/);
+  if (!match) {
+    // No recognizable scheme://host structure; fall back to a plain glob.
+    return `^${urlGlobSource(trimmed)}`;
+  }
+  const [, scheme, host, rest] = match;
+  return `^${urlGlobSource(scheme)}:\\/\\/${hostGlobSource(host)}(?=[/?#:]|$)${urlGlobSource(rest)}`;
 }
 
 function isHostPattern(pattern: string): boolean {
@@ -95,6 +135,30 @@ export function isInScope(target: string, scope?: Scope): ScopeCheckResult {
   }
 
   return { inScope: false, reason: `NOT IN SCOPE: ${target} does not match any in-scope pattern` };
+}
+
+/** Error thrown by {@link assertInScope} when a URL falls outside the scope. */
+export class ScopeError extends Error {
+  readonly target: string;
+  readonly reason: string;
+
+  constructor(target: string, reason: string) {
+    super(`Scope violation for "${target}": ${reason}`);
+    this.name = "ScopeError";
+    this.target = target;
+    this.reason = reason;
+  }
+}
+
+/**
+ * Central scope gate: throws a ScopeError when `url` is not in scope.
+ * Returns normally when the URL is in scope (or no scope is configured).
+ */
+export function assertInScope(url: string, scope: Scope): void {
+  const result = isInScope(url, scope);
+  if (!result.inScope) {
+    throw new ScopeError(url, result.reason);
+  }
 }
 
 interface BurpScopeEntry {

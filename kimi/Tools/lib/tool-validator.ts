@@ -25,6 +25,12 @@ interface ToolDefinition {
   versionArgs: string[];
   modes: HuntMode[];
   required: boolean;
+  /**
+   * True for manual/GUI applications (e.g. Burp Suite) that are not real CLI
+   * tools. Presence on PATH is reported as informational only and never
+   * counts as a hard CLI failure.
+   */
+  manual?: boolean;
 }
 
 /** Tools commonly used by BugHunter AI agents. */
@@ -46,9 +52,30 @@ export const KNOWN_TOOLS: Record<string, ToolDefinition> = {
   sqlmap: { command: "sqlmap", versionArgs: ["--version"], modes: ["pentest", "comprehensive"], required: false },
   commix: { command: "commix", versionArgs: ["--version"], modes: ["pentest", "comprehensive"], required: false },
   masscan: { command: "masscan", versionArgs: ["--version"], modes: ["comprehensive"], required: false },
-  burpsuite: { command: "burpsuite", versionArgs: ["--version"], modes: ["bounty", "pentest", "comprehensive"], required: false },
+  // GUI application, not a CLI tool — presence on PATH is informational only.
+  burpsuite: { command: "burpsuite", versionArgs: ["--version"], modes: ["bounty", "pentest", "comprehensive"], required: false, manual: true },
+  // Content discovery / recon (JS-aware crawling, archives, secrets, OOB).
+  waymore: { command: "waymore", versionArgs: ["--version"], modes: ["bounty", "pentest", "comprehensive"], required: false },
+  gau: { command: "gau", versionArgs: ["--version"], modes: ["bounty", "pentest", "comprehensive"], required: false },
+  jsluice: { command: "jsluice", versionArgs: ["--version"], modes: ["bounty", "pentest", "comprehensive"], required: false },
+  trufflehog: { command: "trufflehog", versionArgs: ["--version"], modes: ["bounty", "pentest", "comprehensive"], required: false },
+  "interactsh-client": { command: "interactsh-client", versionArgs: ["--version"], modes: ["bounty", "pentest", "comprehensive"], required: false },
+  // Parameter and API route discovery.
+  arjun: { command: "arjun", versionArgs: ["--version", "-h"], modes: ["bounty", "pentest", "comprehensive"], required: false },
+  kiterunner: { command: "kr", versionArgs: ["version", "--version"], modes: ["bounty", "pentest", "comprehensive"], required: false },
+  // API testing (optional).
+  "graphql-cop": { command: "graphql-cop", versionArgs: ["--version", "-h"], modes: ["bounty", "pentest", "comprehensive"], required: false },
+  grpc_cli: { command: "grpc_cli", versionArgs: ["--help", "--version"], modes: ["pentest", "comprehensive"], required: false },
+  // Mobile testing (required by appium-harness.ts).
+  adb: { command: "adb", versionArgs: ["--version", "version"], modes: ["comprehensive"], required: false },
+  aapt: { command: "aapt", versionArgs: ["version", "--version"], modes: ["comprehensive"], required: false },
+  frida: { command: "frida", versionArgs: ["--version"], modes: ["comprehensive"], required: false },
   apktool: { command: "apktool", versionArgs: ["--version"], modes: ["comprehensive"], required: false },
   jadx: { command: "jadx", versionArgs: ["--version"], modes: ["comprehensive"], required: false },
+  // LLM security (optional/recommended tier — never required).
+  garak: { command: "garak", versionArgs: ["--version"], modes: ["comprehensive"], required: false },
+  pyrit: { command: "pyrit", versionArgs: ["--version", "-h"], modes: ["comprehensive"], required: false },
+  promptfoo: { command: "promptfoo", versionArgs: ["--version"], modes: ["comprehensive"], required: false },
 };
 
 function decode(data: Uint8Array | ArrayBuffer | undefined): string {
@@ -73,8 +100,16 @@ export async function checkTool(name: string, required = false): Promise<ToolChe
       command,
       required,
       installed: false,
-      error: `${command} not found on PATH`,
+      error: def?.manual
+        ? `${command} is a manual/GUI application — install it outside the CLI`
+        : `${command} not found on PATH`,
     };
+  }
+
+  // Manual/GUI applications: presence on PATH is enough; skip the version
+  // probe so launching the GUI is never attempted.
+  if (def?.manual) {
+    return { name, command, required, installed: true, version: "manual/GUI application" };
   }
 
   // Second probe: can it report a version?

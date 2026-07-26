@@ -12,10 +12,34 @@ This guide walks through installing and running the Kimi port of BugHunter AI.
 
 - [Playwright](https://playwright.dev) browsers: `bunx playwright install chromium`
 - [Burp Suite Professional](https://portswigger.net/burp) with REST API enabled on port 1337
-- Go-based recon tools:
-  - `subfinder`, `httpx`, `naabu`, `nuclei`, `ffuf`
+- ProjectDiscovery recon stack: `subfinder`, `httpx`, `naabu`, `dnsx`, `nuclei`, `katana`, `interactsh-client`.
+  The easy path is their installer [pdtm](https://github.com/projectdiscovery/pdtm):
+  `go install github.com/projectdiscovery/pdtm/cmd/pdtm@latest`, then `pdtm -install-all`
+- Other Go-based content-discovery/recon tools:
+  - `ffuf`: `go install github.com/ffuf/ffuf/v2@latest`
+  - `gau`: `go install github.com/lc/gau/v2/cmd/gau@latest`
+  - `jsluice`: `go install github.com/BishopFox/jsluice/cmd/jsluice@latest`
+  - `kiterunner` (binary is `kr`): build from [assetnote/kiterunner](https://github.com/assetnote/kiterunner)
+  - `trufflehog`: `go install github.com/trufflesecurity/trufflehog/v3@latest`
 - Python tools:
   - `sqlmap`
+  - `waymore`: `pip install waymore`
+  - `arjun`: `pip install arjun`
+- API testing:
+  - `graphql-cop`: `pip install graphql-cop`
+  - `grpc_cli`: build from the [grpc](https://github.com/grpc/grpc) repo (`bazel build //test/cpp/util:grpc_cli`)
+- LLM security (used by LLMSecurityAgent):
+  - `garak`: `pip install garak`
+  - Microsoft [PyRIT](https://github.com/Azure/PyRIT): `pip install pyrit`
+  - `promptfoo`: `npm install -g promptfoo`
+- Mobile testing (Android, used by `appium-harness.ts`):
+  - `adb` and `aapt`: install the Android SDK platform-tools / build-tools
+  - `apktool`, `jadx`
+  - `frida`: `pip install frida-tools`
+
+Run `bun kimi/Tools/hunt-orchestrator.ts --target https://target.example.com --validate-tools`
+to health-check everything on your PATH (see `kimi/Tools/lib/tool-validator.ts`
+for the full list of known tools).
 
 ## Installation
 
@@ -123,7 +147,7 @@ kimi/
 ├── BugBountyFramework.md   # Top-level skill prompt
 ├── commands.md             # Command reference
 ├── Tools/                  # TypeScript tooling
-├── Agents/                 # 28 specialized agent prompts
+├── Agents/                 # 27 specialized agent prompts
 ├── Workflows/              # Hunt workflows (JSON + Markdown)
 ├── Templates/              # Report and config templates
 ├── __tests__/              # Unit tests

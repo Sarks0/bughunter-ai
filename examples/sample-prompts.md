@@ -1,6 +1,6 @@
 # Sample Hunt Prompts
 
-Copy-paste these into Claude Code to start hunting.
+Copy-paste these into Kimi Code CLI to start hunting.
 
 ---
 
@@ -13,7 +13,7 @@ hunt https://app.example.com
 ## Hunt with Credentials from Vault
 
 ```
-hunt https://app.example.com --creds vault:example-corp
+hunt https://app.example.com --creds-from vault:example-corp
 ```
 
 ## Pentest Mode (Lower Severity Threshold)
@@ -56,7 +56,10 @@ Don't stop until done.
 ## API-Only Hunt
 
 ```
-hunt https://api.example.com/v1 --type api --swagger /tmp/swagger.json
+hunt https://api.example.com/v1
+
+API-only target. An OpenAPI/Swagger spec is saved at /tmp/swagger.json —
+parse it and feed the endpoints to APIAgent.
 ```
 
 ## Hunt AI/LLM Application
@@ -74,8 +77,11 @@ Focus on:
 
 ## Mobile App Hunt
 
+Mobile hunts run through the Appium harness, not the hunt orchestrator:
+
+```bash
+bun kimi/Tools/appium-harness.ts --platform android --apk /path/to/app.apk --proxy http://127.0.0.1:8080
 ```
-hunt --apk /path/to/app.apk --proxy
 
 Test for:
 - SSL pinning bypass
@@ -83,12 +89,11 @@ Test for:
 - Deep link injection
 - Insecure storage
 - API security through intercepted traffic
-```
 
 ## Full Program Hunt (Config File)
 
 ```
-hunt --config ~/.claude/MEMORY/BugBounty/TargetProfiles/example-corp.json
+hunt --config kimi-data/TargetProfiles/example-corp.json
 ```
 
 ---

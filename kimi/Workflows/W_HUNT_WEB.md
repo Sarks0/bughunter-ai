@@ -9,11 +9,13 @@ Target is an HTTP/HTTPS URL responding with 200/301/302/403.
 ## Pre-flight
 
 ```bash
-bun kimi/Tools/hunt-orchestrator.ts --target "$TARGET" --workflow W_HUNT_WEB --mode "$MODE"
-bun kimi/Tools/credential-vault.ts --get --target "$TARGET_SLUG"
+bun kimi/Tools/hunt-orchestrator.ts --target "$TARGET" --workflow W_HUNT_WEB --mode "$MODE" \
+  --config kimi-data/TargetProfiles/program.json
 bun kimi/Tools/auth-manager.ts --target "$TARGET" --check
 bun kimi/Tools/burp-bridge.ts --health
 ```
+
+Do not extract vault secrets into prompts — auth-manager resolves them internally via `--creds-from vault:$TARGET_SLUG`. Pass `--scope-config kimi-data/TargetProfiles/program.json` to playwright-harness, burp-bridge, and validate-finding on every run.
 
 ## Phases
 
@@ -26,7 +28,7 @@ bun kimi/Tools/burp-bridge.ts --health
 7. **ADVANCED** — SSRF, cache poisoning, HTTP smuggling, prototype pollution.
 8. **API_PROTOCOL** — GraphQL, WebSocket, API agents (conditional).
 9. **FILE_HANDLING** — File upload testing (conditional).
-10. **REPORT** — Aggregate, deduplicate, generate report.
+10. **REPORT** — Validate findings with `validate-finding.ts`, then aggregate, deduplicate, generate report.
 
 ## Agent dispatch
 

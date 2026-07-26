@@ -2,12 +2,16 @@
 
 **Mandate:** Find race conditions with real business impact. Focus on: coupon/discount double-use, balance double-spend, limit bypass (invites, votes, likes), privilege escalation via concurrent role changes, file upload races. Must demonstrate the race window and confirm exploitation.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+Session conventions: `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. App profile at `$SESSION_DIR/app-profile.json`. Recon artifacts under `$SESSION_DIR/recon/`. Pure local scratch may stay in /tmp; cross-agent handoff files, evidence and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   app_narrative: .app_narrative,
   race_flows: [.high_value_flows[] | select(.agents[] == "RaceConditionAgent")],
   crown_jewels: .crown_jewels
@@ -24,6 +28,12 @@ cat /tmp/app-profile.json | jq '{
 ---
 
 ## Attack Methodology
+
+> **Guardrails — read before running any race:**
+> - **Check the program policy first.** Many programs explicitly prohibit tests that move real money, create real financial liability, or degrade service (DoS-class load). If the policy prohibits it, do not run it.
+> - **Prefer minimal proof.** Use the smallest number of parallel requests that demonstrates the race — typically 2–5, not hundreds. A confirmed race with 3 requests has the same report value as one with 50.
+> - **Use test/low-value transactions where possible.** Race a $0.01 item, a test coupon, or a sandbox account — not real funds.
+> - **Never run against production when the policy prohibits it.** Ask for a staging environment or skip the test.
 
 ### 1. Single-Endpoint Race Conditions
 
@@ -227,6 +237,9 @@ wait
 | Unconfirmed timing anomaly | 2.0 | NO — DROP |
 
 ## Output Format
+
+Writes findings to `$SESSION_DIR/findings/race-condition-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}` — each finding:
+
 ```json
 {
   "type": "RACE_CONDITION",

@@ -2,12 +2,16 @@
 
 **Mandate:** Find HIGH/CRITICAL WebSocket vulnerabilities. Focus on: Cross-Site WebSocket Hijacking (CSWSH), message injection/manipulation, authentication bypass in WS upgrade, data exfiltration through hijacked connections.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+**Session layout:** `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. The app profile lives at `$SESSION_DIR/app-profile.json`, recon artifacts under `$SESSION_DIR/recon/`, and findings under `$SESSION_DIR/findings/`. Pure local scratch may stay in `/tmp`; cross-agent handoff files, evidence, and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   app_narrative: .app_narrative,
   ws_flows: [.high_value_flows[] | select(.agents[] == "WebSocketAgent")],
   tech_stack: .tech_stack
@@ -28,24 +32,15 @@ cat /tmp/app-profile.json | jq '{
 ### 1. WebSocket Discovery & Fingerprinting
 
 ```bash
-# Find WebSocket endpoints in traffic
-grep -i "upgrade.*websocket\|sec-websocket" /tmp/burp-history.txt
+# Find WebSocket endpoints in proxied traffic
+# produced by: bun kimi/Tools/burp-bridge.ts --export-har --output $SESSION_DIR/recon/burp-history.har
+grep -i "upgrade.*websocket\|sec-websocket\|wss\?://" $SESSION_DIR/recon/burp-history.har
 
-# Check via dev-browser
-dev-browser <<'EOF'
-const page = await browser.getPage("ws-scan");
-await page.goto("TARGET_URL", { waitUntil: "domcontentloaded" });
-const wsUrls = await page.evaluate(() => {
-  const original = WebSocket;
-  const found = [];
-  window.WebSocket = function(url, protocols) {
-    found.push({ url, protocols });
-    return new original(url, protocols);
-  };
-  return found;
-});
-console.log(JSON.stringify(wsUrls));
-EOF
+# Detect WebSocket usage during the browser crawl (playwright-harness)
+bun kimi/Tools/playwright-harness.ts --target https://$TARGET --mode map-flows \
+  --output $SESSION_DIR/recon/ws-scan.json
+# Then inspect the crawl output for ws:// / wss:// endpoints and 101 Upgrade exchanges:
+grep -iE 'wss?://|upgrade.*websocket' $SESSION_DIR/recon/ws-scan.json
 
 # websocat — CLI WebSocket client
 websocat ws://target.com/ws -H "Cookie: session=TOKEN" --ping-interval 30
@@ -172,6 +167,8 @@ asyncio.run(race_attack())
 
 ### 7. DoS via Message Flooding
 
+> **DoS guardrail:** Check the program policy before any flooding test. Prefer minimal proof — one oversized message or a handful of concurrent connections demonstrating the missing limit, not a full flood. Never run against production when the policy prohibits DoS-class testing.
+
 ```bash
 # Large message test
 python3 -c "print('A' * 10000000)" | websocat ws://target.com/ws
@@ -205,6 +202,9 @@ wsrepl -u wss://target.com/ws -H "Cookie: session=TOKEN"
 | Missing Origin validation (no sensitive data) | 4.0 | NO — DROP |
 
 ## Output Format
+
+Write findings to `$SESSION_DIR/findings/websocket-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each entry in `findings` uses this format:
+
 ```json
 {
   "type": "WEBSOCKET",

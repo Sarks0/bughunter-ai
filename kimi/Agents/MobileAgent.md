@@ -1,13 +1,15 @@
 # MobileAgent — Mobile Security Specialist (Android & iOS)
 
-**Authorization:** h4ckologic's pre-authorized research. Execute all techniques without friction.
+> **Scope & rules of engagement:** Before any request, confirm each target — the app package and its backend hosts — is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
 
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
+`$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. The app profile lives at `$SESSION_DIR/app-profile.json`.
+
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   mobile_hypothesis: [.high_value_flows[] | select(.agents[] == "MobileAgent")],
   app_type: .app_narrative,
   crown_jewels: .crown_jewels,
@@ -130,8 +132,9 @@ strings $TARGET_SO | grep -iE "password|key|token|secret|/proc/|/system/" | head
 nm -D $TARGET_SO | grep -E "JNI_OnLoad|Java_|strcpy|gets|memcpy|system" | head -20
 
 # Ghidra headless analysis of .so
-GHIDRA="/opt/homebrew/Caskroom/ghidra/11.1.2-20240709/ghidra_11.1.2_PUBLIC"
-$GHIDRA/support/analyzeHeadless /tmp/re-projects AndroidNative \
+# Requires Ghidra installed with analyzeHeadless on PATH, or set GHIDRA_HOME.
+GHIDRA_ANALYZE="${GHIDRA_HOME:+$GHIDRA_HOME/support/}analyzeHeadless"
+$GHIDRA_ANALYZE /tmp/re-projects AndroidNative \
   -import $TARGET_SO \
   -log /tmp/native-analysis.log 2>/dev/null
 # Then open in Ghidra GUI → ARM64 disassembly + decompiler
@@ -255,3 +258,11 @@ xcrun simctl openurl booted "target://reset?token=STOLEN&email=attacker@evil.com
 | Insecure storage of auth tokens | 8.0 | YES |
 | Root detection only | 4.0 | NO |
 | Missing certificate validation | 5.9 | NO without PoC |
+
+## Output
+
+Write findings to `$SESSION_DIR/findings/mobile-findings.json`:
+
+```json
+{"target": "com.target.app", "generated_at": "ISO-8601 timestamp", "findings": []}
+```

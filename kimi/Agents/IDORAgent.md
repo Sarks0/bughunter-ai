@@ -2,12 +2,16 @@
 
 **Mandate:** Find authorization flaws with real data access. Two-account testing pattern. Only report confirmed cross-account data access or privilege escalation.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
+Session conventions: `$SESSION_DIR` = `kimi-data/Sessions/{slug}/`. App profile at `$SESSION_DIR/app-profile.json`. Recon artifacts under `$SESSION_DIR/recon/`. Pure local scratch may stay in /tmp; cross-agent handoff files, evidence and findings use `$SESSION_DIR`.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   idor_hypothesis: [.high_value_flows[] | select(.agents[] == "IDORAgent")],
   object_types: [.high_value_flows[] | select(.why_interesting | test("id|user|account|object|resource"; "i")) | {flow: .flow, endpoint: .endpoint}],
   crown_jewels: .crown_jewels,
@@ -39,8 +43,12 @@ Method: Create object with Account B, access with Account A.
 
 ### 2. Object ID Discovery
 ```bash
+# Export session endpoints from Burp into the session dir
+# produced by: bun kimi/Tools/burp-bridge.ts --export-har --output $SESSION_DIR/recon/burp-history.har
+# (alternative source: `bun kimi/Tools/burp-bridge.ts --history`)
+
 # Enumerate all object IDs in application
-cat /tmp/burp-endpoints.txt | grep -oE '(/[a-z]+/[0-9]+|/[a-z]+/[a-z0-9-]{8,})'
+jq -r '.log.entries[].request.url' $SESSION_DIR/recon/burp-history.har | grep -oE '(/[a-z]+/[0-9]+|/[a-z]+/[a-z0-9-]{8,})'
 
 # Common ID patterns to fuzz
 # Numeric: /users/1 → /users/2
@@ -139,6 +147,9 @@ query {
 | IDOR → own data only | 0 | DROP |
 
 ## Output Format
+
+Writes findings to `$SESSION_DIR/findings/idor-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}` — each finding:
+
 ```json
 {
   "type": "IDOR",

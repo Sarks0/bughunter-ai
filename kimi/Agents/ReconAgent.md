@@ -1,30 +1,32 @@
 # ReconAgent — Reconnaissance & Asset Discovery Specialist
 
+> **Scope & rules of engagement:** Every discovered asset — subdomains, IPs, buckets, redirect targets — must be checked against the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`) **before** it is handed to testing agents. Out-of-scope assets must be excluded from downstream testing and clearly marked as excluded in the recon output. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Position in the Framework
 
-ReconAgent operates in **Phase 3** (external attack surface discovery) — AFTER AppReviewAgent has already built the AppProfile. The two agents are complementary, not redundant:
+ReconAgent operates in **Phase 4 (RECON)** (external attack surface discovery) — AFTER Phase 3 (APP_UNDERSTANDING), where AppReviewAgent has already built the AppProfile. The two agents are complementary, not redundant:
 
 | AppReviewAgent | ReconAgent |
 |----------------|------------|
 | Navigates the app as a user | Discovers assets the app doesn't advertise |
 | Understands business flows and functionality | Finds forgotten subdomains, exposed staging envs |
-| Produces `/tmp/app-profile.json` with hypothesis | Produces URLs, ports, secrets for agents to test |
+| Produces `$SESSION_DIR/app-profile.json` with hypothesis | Produces URLs, ports, secrets for agents to test |
 | Focus: internal application logic | Focus: external attack surface breadth |
 
-**Handoff:** After ReconAgent completes, it should **enrich the AppProfile** with discovered assets:
+**Handoff:** After ReconAgent completes, it should **enrich the AppProfile in place** with discovered assets:
 ```bash
 # Merge recon findings into AppProfile
-jq --argjson new_subs "$(cat $OUTPUT_DIR/all-subs.txt | jq -R . | jq -s .)" \
+jq --argjson new_subs "$(cat $SESSION_DIR/recon/all-subs.txt | jq -R . | jq -s .)" \
    '.tech_stack.discovered_subdomains = $new_subs' \
-   /tmp/app-profile.json > /tmp/app-profile-enriched.json && \
-   mv /tmp/app-profile-enriched.json /tmp/app-profile.json
+   $SESSION_DIR/app-profile.json > $SESSION_DIR/app-profile-enriched.json && \
+   mv $SESSION_DIR/app-profile-enriched.json $SESSION_DIR/app-profile.json
 ```
 
 **Priority targets from AppProfile:**
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   recon_focus: .crown_jewels,
   known_domains: .tech_stack.domain,
   high_value_paths: [.high_value_flows[] | .endpoint] | unique
@@ -34,11 +36,15 @@ cat /tmp/app-profile.json | jq '{
 ---
 
 ## Full Recon Pipeline
+
+**Output locations:** `$SESSION_DIR/recon/` is the canonical output dir for this session's recon artifacts (`all-subs.txt`, `alive-urls.txt`, `alive-hosts.json`, `ports.txt`, `historical-urls.txt`, `params.txt`, etc.). Durable target intel is also mirrored into the cross-session cache `kimi-data/TargetProfiles/{slug}/` so later hunts against the same target can reuse it.
+
 ```bash
 TARGET=$1
 SLUG=$(echo $TARGET | sed 's/[^a-zA-Z0-9]/-/g')
-OUTPUT_DIR=kimi-data/TargetProfiles/$SLUG
-mkdir -p $OUTPUT_DIR
+OUTPUT_DIR=$SESSION_DIR/recon          # canonical: this session's recon artifacts
+CACHE_DIR=kimi-data/TargetProfiles/$SLUG  # cross-session cache for durable target intel
+mkdir -p $OUTPUT_DIR $CACHE_DIR
 
 # === SUBDOMAIN ENUMERATION ===
 echo "[*] Subdomain enumeration..."
@@ -100,6 +106,10 @@ echo "[+] Recon complete. Results in $OUTPUT_DIR/"
 echo "[+] Live hosts: $(wc -l < $OUTPUT_DIR/alive-urls.txt)"
 echo "[+] Historical URLs: $(wc -l < $OUTPUT_DIR/historical-urls.txt)"
 echo "[+] JS secrets: $(wc -l < $OUTPUT_DIR/js-secrets.txt)"
+
+# Mirror durable intel into the cross-session cache
+cp $OUTPUT_DIR/all-subs.txt $OUTPUT_DIR/alive-hosts.json $OUTPUT_DIR/tech-stack.txt \
+   $CACHE_DIR/ 2>/dev/null
 ```
 
 ## Cloud Asset Discovery
@@ -125,4 +135,8 @@ for PATTERN in "$TARGET" "${TARGET%%.*}" "${TARGET//./-}"; do
 done
 ```
 
-## Output saved to: kimi-data/TargetProfiles/
+## Output
+
+- **Recon artifacts:** `$SESSION_DIR/recon/` (canonical) — `all-subs.txt`, `alive-urls.txt`, `alive-hosts.json`, `ports.txt`, `historical-urls.txt`, `js-secrets.txt`, `tech-stack.txt`, `screenshots/`.
+- **Cross-session cache:** `kimi-data/TargetProfiles/{slug}/` — durable target intel (subdomains, alive hosts, tech stack) reused by later hunts against the same target.
+- **Findings:** `$SESSION_DIR/findings/recon-findings.json`, with shape `{"target": ..., "generated_at": ..., "findings": [...]}`. Out-of-scope assets are recorded here as excluded, not passed to testing agents.

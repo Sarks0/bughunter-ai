@@ -4,11 +4,8 @@
   "scope_in": ["*.example.com", "api.example.com", "app.example.com"],
   "scope_out": ["blog.example.com", "status.example.com"],
   "target_types": ["web", "api"],
-  "auth_tokens": {
-    "session_cookie": "",
-    "api_key": "",
-    "jwt": ""
-  },
+  "credentials": "vault:example-corp",
+  "credentials_note": "Never put credentials in this file. Store them in the vault (kimi/Tools/credential-vault.ts) and reference them as vault:<name>; auth-manager.ts loads them via --creds-from.",
   "max_severity_filter": "critical_high",
   "notes": "Admin panel at /admin, GraphQL at /graphql, API docs at /api/docs"
 }

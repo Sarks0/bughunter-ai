@@ -1,11 +1,14 @@
 # FileUploadAgent — File Upload Bypass & RCE Specialist
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+# $SESSION_DIR = kimi-data/Sessions/{slug}/ (the current hunt session dir)
+cat $SESSION_DIR/app-profile.json | jq '{
   upload_hypothesis: [.high_value_flows[] | select(.agents[] == "FileUploadAgent")],
   upload_surfaces: [.high_value_flows[] | select(.why_interesting | test("upload|avatar|attachment|document|import|image|file|media"; "i"))],
   tech_stack: {framework: .tech_stack.framework, language: .tech_stack.language, storage: .tech_stack.file_storage},
@@ -100,3 +103,7 @@ with zipfile.ZipFile('/tmp/evil.docx', 'w') as z:
 - File upload → stored XSS: 8.5 → YES (if in admin context)
 - File upload → path traversal: 8.1 → YES with impact
 - File upload → SSRF via SVG: 8.8 → YES
+
+## Findings Output
+
+All confirmed findings are written to `$SESSION_DIR/findings/file-upload-findings.json` as a single object of shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each finding records the upload endpoint, bypass technique, payload file, evidence (executed response or callback), and severity from the table above.

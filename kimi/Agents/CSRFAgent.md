@@ -2,12 +2,15 @@
 
 **Mandate:** Find HIGH/CRITICAL CSRF vulnerabilities on state-changing operations. Focus on: password change, email change, admin actions, financial transactions, account linking. Skip read-only CSRF or actions with no security impact.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+# $SESSION_DIR = kimi-data/Sessions/{slug}/ (the current hunt session dir)
+cat $SESSION_DIR/app-profile.json | jq '{
   app_narrative: .app_narrative,
   csrf_flows: [.high_value_flows[] | select(.agents[] == "CSRFAgent")],
   tech_stack: .tech_stack
@@ -28,15 +31,15 @@ cat /tmp/app-profile.json | jq '{
 ### 1. CSRF Token Analysis
 
 ```bash
-# Extract CSRF tokens from forms
-dev-browser <<'EOF'
-const page = await browser.getPage("csrf");
-await page.goto("TARGET/settings", { waitUntil: "domcontentloaded" });
-const tokens = await page.$$eval("input[name*=csrf], input[name*=token], input[name*=_token], meta[name*=csrf]",
-  els => els.map(e => ({ name: e.name || e.getAttribute("name"), value: e.value || e.getAttribute("content") }))
-);
-console.log(JSON.stringify(tokens));
-EOF
+# Extract CSRF tokens from forms — using Playwright (e.g. `bun kimi/Tools/playwright-harness.ts
+# --target $TARGET`, or a short Playwright script), navigate to $TARGET/settings
+# (waitUntil: "domcontentloaded") and evaluate in the page context:
+#   Array.from(document.querySelectorAll(
+#     "input[name*=csrf], input[name*=token], input[name*=_token], meta[name*=csrf]"
+#   )).map(e => ({ name: e.name || e.getAttribute("name"), value: e.value || e.getAttribute("content") }))
+# Record each token name/value found. Then replay the state-changing request from a
+# cross-origin context (e.g. via the PoC form in section 7) and observe whether it
+# succeeds without the anti-CSRF token.
 
 # Token reuse test — use same token for different user/session
 # Token removal test — submit without token
@@ -147,11 +150,15 @@ fetch("https://target.com/api/user/profile", {credentials: "include"})
 ### 7. PoC Generation
 
 ```bash
-# Auto-generate CSRF PoC from Burp request
-# Extract from Burp: right-click → Engagement tools → Generate CSRF PoC
+# Craft the CSRF PoC manually from the captured request (see the template below):
+# take the state-changing request from Burp history
+# (`bun kimi/Tools/burp-bridge.ts --history --filter "method:POST"`), copy the action
+# URL and body parameters into the form, and save it under the session findings dir.
+# (Manual analyst step: in the Burp GUI, right-click the request → Engagement tools →
+# "Generate CSRF PoC" can also produce this HTML — not available to an autonomous CLI agent.)
 
 # Manual PoC template
-cat > /tmp/csrf-poc.html <<'HTML'
+cat > $SESSION_DIR/findings/csrf-poc.html <<'HTML'
 <html>
 <body>
 <h1>CSRF PoC — [TARGET ACTION]</h1>
@@ -177,6 +184,9 @@ HTML
 | CSRF on non-sensitive action | 3.0 | NO — DROP |
 
 ## Output Format
+
+All confirmed findings are written to `$SESSION_DIR/findings/csrf-findings.json` as a single object of shape `{"target": ..., "generated_at": ..., "findings": [...]}`, where each finding follows:
+
 ```json
 {
   "type": "CSRF",

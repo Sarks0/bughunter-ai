@@ -6,18 +6,55 @@
 
 ## Executive Summary
 
-[SEVERITY] severity vulnerabilities were discovered in [TARGET PROGRAM]. [Summary sentence].
+[SUMMARY SENTENCE]
 
-- **Target:** `https://target.example.com`
+- **Target:** `[TARGET]`
 - **Assessment Date:** [DATE]
-- **Total Findings:** [N]
-- **Critical/High:** [N]
+- **Total Findings:** [TOTAL FINDINGS] ([CONFIRMED FINDINGS] confirmed, [UNCONFIRMED FINDINGS] unconfirmed)
+- **Critical/High:** [CRITICAL/HIGH]
 
 ---
 
 ## Findings
 
-[FINDINGS]
+<!-- BEGIN FINDING -->
+### Finding [FINDING NUMBER]: [[FINDING SEVERITY]] [FINDING TITLE]
+
+| Field | Value |
+|-------|-------|
+| **Type** | [FINDING TYPE] |
+| **Severity** | [FINDING SEVERITY] |
+| **CVSS Score** | [CVSS SCORE] |
+| **CVSS Vector** | [CVSS VECTOR] |
+| **VRT Category** | [VRT CATEGORY] |
+| **Validation Status** | [VALIDATION STATUS] |
+| **Affected Component** | [COMPONENT] |
+| **Parameter** | [PARAMETER] |
+
+#### Description
+
+[DESCRIPTION]
+
+#### Steps to Reproduce
+
+[STEPS TO REPRODUCE]
+
+#### Proof of Concept
+
+[PROOF OF CONCEPT]
+
+#### Impact
+
+[IMPACT]
+
+#### Remediation
+
+[REMEDIATION]
+
+#### References
+
+[REFERENCES]
+<!-- END FINDING -->
 
 ---
 

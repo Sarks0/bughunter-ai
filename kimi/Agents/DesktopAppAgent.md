@@ -2,12 +2,14 @@
 
 **Mandate:** Find exploitable vulnerabilities in desktop applications. Focus: Electron XSS→RCE, .NET/Java decompile+tamper, native helper LPE, IPC trust boundary violations, update hijacking.
 
+> **Scope & rules of engagement:** Before any request, confirm each target URL/host is within the program scope recorded in the session's target config (`kimi-data/Sessions/{slug}/`). Out-of-scope assets discovered during testing (e.g. via recon or redirects) must be excluded. Do not run DoS-class tests unless the program policy explicitly allows them.
+
 ---
 
 ## Application Context (READ BEFORE TESTING)
 
 ```bash
-cat /tmp/app-profile.json | jq '{
+cat $SESSION_DIR/app-profile.json | jq '{
   desktop_hypothesis: [.high_value_flows[] | select(.agents[] == "DesktopAppAgent")],
   app_type: .tech_stack.desktop_runtime,
   platform: .tech_stack.platform,
@@ -254,3 +256,9 @@ dcomcnfg  # GUI: look for services running as SYSTEM with open Launch/Access per
 | COM object LPE | 8.8 | YES |
 | License bypass only (no security impact) | 0 | NO — DROP |
 | Information disclosure (no privesc path) | 4.0 | NO |
+
+---
+
+## Findings Output
+
+Findings are written to `$SESSION_DIR/findings/desktop-app-findings.json` with shape `{"target": ..., "generated_at": ..., "findings": [...]}`. Evidence files (screenshots, PoC output) are stored under `$SESSION_DIR`. Decompile/extraction scratch dirs (`/tmp/app-extracted`, `/tmp/dotnet-decompiled`, etc.) are local-only scratch and stay in `/tmp`.
