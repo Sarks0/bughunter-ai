@@ -49,6 +49,7 @@ Kimi loads the framework from `kimi/BugBountyFramework.md`. The framework then:
 - Tools are TypeScript/Bun. Run one with `bun kimi/Tools/<tool>.ts` (no arguments) to print its usage.
 - Tests live in `kimi/__tests__/` and run with `bun test` from `kimi/`.
 - The original Claude skill is preserved; changes to `kimi/` should not modify `skills/`.
+- `./install.sh` is the unified installer for both CLIs (flags: `--kimi-only`, `--claude-only`, `--with-mcp`, `--skip-browser`).
 
 ## MCP servers
 
