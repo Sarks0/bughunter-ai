@@ -68,9 +68,10 @@ async function loadCredsFromVault(targetName: string): Promise<{ username?: stri
       token: cred.jwt || cred.apiKey,
     };
   } catch (err) {
+    // Vault failures are fatal, but exiting is the CLI layer's job:
+    // rethrow and let main()'s fatal handler print and exit 1.
     if (err instanceof VaultError) {
-      console.error(`[AUTH] Vault error: ${err.message}`);
-      process.exit(1);
+      throw err;
     }
     return {};
   }
@@ -245,6 +246,8 @@ async function authAPI(username: string, password: string): Promise<boolean> {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: username, username, password }),
+        // Never follow redirects: a 307/308 would re-send the credential body cross-origin.
+        redirect: "manual",
       });
 
       if (res.ok) {

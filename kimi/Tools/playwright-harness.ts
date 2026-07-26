@@ -13,10 +13,10 @@ import { parseArgs } from "util";
 import { chromium, type Browser, type BrowserContext } from "playwright";
 import { DATA_DIR, getSessionDir, toSlug } from "./lib/paths.ts";
 import { assertInScope, isInScope, loadScopeFromConfig, scopeSummary, type Scope } from "./lib/scope.ts";
-import { parseExtraHeaders } from "./lib/headers.ts";
+import { parseExtraHeaders, applyScopedExtraHeaders, shouldSendExtraHeaders } from "./lib/headers.ts";
 import type { Finding } from "./lib/finding.ts";
 
-export { parseExtraHeaders };
+export { parseExtraHeaders, shouldSendExtraHeaders };
 
 export interface HarnessConfig {
   target?: string;
@@ -34,7 +34,7 @@ export interface HarnessConfig {
   maxPages: number;
   /** Chromium sandbox is ON by default; --no-sandbox opts out (needed as root). */
   noSandbox: boolean;
-  /** Extra HTTP headers (--header "Name: value") applied to every browser context. */
+  /** Extra HTTP headers (--header "Name: value") for browser contexts, scoped to the target origin. */
   extraHeaders: Record<string, string>;
   /** Path to a target-config JSON; when set, crawl/scan URLs are scope-checked. */
   scopeConfig?: string;
@@ -160,10 +160,12 @@ async function createContext(browser: Browser): Promise<BrowserContext> {
   const extraHeaders: Record<string, string> = { ...harnessConfig.extraHeaders };
   if (harnessConfig.authToken) extraHeaders.Authorization = `Bearer ${harnessConfig.authToken}`;
 
-  const context = await browser.newContext({
-    ignoreHTTPSErrors: true,
-    extraHTTPHeaders: Object.keys(extraHeaders).length > 0 ? extraHeaders : undefined,
-  });
+  const context = await browser.newContext({ ignoreHTTPSErrors: true });
+
+  // Extra headers (incl. --auth-token's Authorization) go only to the target
+  // origin / in-scope URLs — context-level extraHTTPHeaders would leak them
+  // to every origin, including off-scope SSO redirect hops.
+  await applyScopedExtraHeaders(context, extraHeaders, harnessConfig.target ?? "", harnessConfig.scope);
 
   if (harnessConfig.authCookie) {
     const domain = new URL(harnessConfig.target!).hostname;
@@ -573,6 +575,11 @@ function bodySimilarity(a: string, b: string): number {
   return 1 - Math.abs(a.length - b.length) / maxLen;
 }
 
+/** The given extra headers, or none when the request URL shouldn't receive them. */
+function scopedHeadersFor(url: string, headers: Record<string, string>): Record<string, string> {
+  return shouldSendExtraHeaders(url, harnessConfig.target ?? "", harnessConfig.scope) ? headers : {};
+}
+
 /**
  * Minimal IDOR / missing-authorization check: re-request each parameterized
  * endpoint with the authenticated context and a fresh unauthenticated context,
@@ -585,16 +592,17 @@ async function testIdor(urls: string[], authContext: BrowserContext, browser: Br
 
   // The unauthenticated context still carries --header extras (e.g. a
   // deployment-protection bypass) so its requests reach the real app.
-  const unauthContext = await browser.newContext({
-    ignoreHTTPSErrors: true,
-    extraHTTPHeaders: Object.keys(harnessConfig.extraHeaders).length > 0 ? { ...harnessConfig.extraHeaders } : undefined,
-  });
+  // Routes don't intercept context.request API calls, so the extras are
+  // passed per request — scoped to the target origin like everything else.
+  const unauthContext = await browser.newContext({ ignoreHTTPSErrors: true });
+  const authHeaders: Record<string, string> = { ...harnessConfig.extraHeaders };
+  if (harnessConfig.authToken) authHeaders.Authorization = `Bearer ${harnessConfig.authToken}`;
   try {
     for (const url of parameterized.slice(0, 30)) {
       try {
         const [authResp, unauthResp] = await Promise.all([
-          authContext.request.get(url, { timeout: 10000 }),
-          unauthContext.request.get(url, { timeout: 10000 }),
+          authContext.request.get(url, { timeout: 10000, headers: scopedHeadersFor(url, authHeaders) }),
+          unauthContext.request.get(url, { timeout: 10000, headers: scopedHeadersFor(url, harnessConfig.extraHeaders) }),
         ]);
         if (authResp.status() !== 200 || unauthResp.status() !== 200) continue;
 

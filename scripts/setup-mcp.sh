@@ -4,8 +4,11 @@
 # Merges the six canonical MCP server definitions (config/mcp.servers.json)
 # into the Kimi Code CLI config (~/.kimi-code/mcp.json) and, when available,
 # registers them with the Claude Code CLI (user scope). Idempotent: existing
-# entries with the same name are updated to the template version, all other
-# entries are preserved, and any existing config is backed up first.
+# entries with the same name are updated to the template version EXCEPT for
+# their "enabled" flag (a user's activation of a key-gated server survives
+# re-runs; vuln-intel's enabled state is always recomputed from whether its
+# binary is installed), all other entries are preserved, and any existing
+# config is backed up first.
 #
 # Requirements: bash (3.2+), python3 (3.6+; used for the JSON merge), sed,
 # and GNU coreutils (mktemp, date, cp, mv). `timeout` is optional — the
@@ -199,7 +202,14 @@ except json.JSONDecodeError as e:
     sys.stderr.write("Fix or remove the file (a backup was made) and re-run.\n")
     sys.exit(1)
 existing.setdefault("mcpServers", {})
-existing["mcpServers"].update(tpl)
+for name, server in tpl.items():
+    # Template wins for every field EXCEPT "enabled": a user who activated a
+    # key-gated server must not be reset to disabled on re-run. vuln-intel is
+    # the exception — its enabled state is computed from the binary's presence.
+    prev = existing["mcpServers"].get(name)
+    if name != "vuln-intel" and isinstance(prev, dict) and "enabled" in prev:
+        server = {**server, "enabled": prev["enabled"]}
+    existing["mcpServers"][name] = server
 with open(out_path, "w") as f:
     json.dump(existing, f, indent=2)
     f.write("\n")

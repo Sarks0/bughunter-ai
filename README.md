@@ -325,9 +325,9 @@ This fork includes a **Kimi Code CLI port** in `kimi/`. It keeps the original Cl
 
 ### What the port includes
 
-- **28 specialized agent prompts** in `kimi/Agents/`
+- **27 specialized agent prompts** in `kimi/Agents/`
 - **8 hunt workflows** as JSON definitions in `kimi/Workflows/`
-- **7 TypeScript tools** in `kimi/Tools/`:
+- **8 TypeScript tools** in `kimi/Tools/`:
   - `hunt-orchestrator.ts` — state machine, resume, workflow selection
   - `credential-vault.ts` — encrypted credential storage
   - `auth-manager.ts` — authentication flow automation
@@ -335,6 +335,7 @@ This fork includes a **Kimi Code CLI port** in `kimi/`. It keeps the original Cl
   - `playwright-harness.ts` — browser automation and app profiling
   - `appium-harness.ts` — mobile testing harness
   - `generate-report.ts` — report generation from findings
+  - `validate-finding.ts` — finding validation (re-test before reporting)
 - **Unit tests** in `kimi/__tests__/` (run with `bun test`)
 - **Project-local runtime data** under `kimi-data/` instead of `~/.claude/MEMORY/`
 
@@ -356,13 +357,13 @@ See `kimi/README.md`, `kimi/SETUP.md`, and `AGENTS.md` for the full Kimi setup a
 
 ### Secure credential vault
 
-The Kimi port stores credentials **encrypted by default** using **AES-256-GCM** with a key derived from your passphrase via PBKDF2 (100,000 iterations, SHA-256).
+The Kimi port stores credentials **encrypted by default** using **AES-256-GCM** with a key derived from your passphrase via PBKDF2 (210,000 iterations, SHA-256; legacy v1 vaults with 100,000 iterations remain readable).
 
-Provide the passphrase via:
+Provide the passphrase via (in order of precedence):
 
-1. `BH_VAULT_PASSPHRASE` environment variable (recommended for scripts)
+1. `--passphrase "your-passphrase"` (not recommended — leaks to shell history)
 2. `--passphrase-file /path/to/passphrase.txt`
-3. `--passphrase "your-passphrase"` (not recommended — leaks to shell history)
+3. `BH_VAULT_PASSPHRASE` environment variable (recommended for scripts)
 4. Interactive prompt (hides input with `*`)
 
 ```bash

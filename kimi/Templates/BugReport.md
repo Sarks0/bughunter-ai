@@ -70,7 +70,7 @@ This assessment was performed using BugHunter AI, a 10-phase autonomous offensiv
 6. Parallel agent deployment (hypothesis-driven testing)
 7. Dynamic testing with browser and proxy tools
 8. Vulnerability assessment and automated scanning
-9. Learning and pattern correlation
+9. Validation (re-test, filter, deduplicate, correlate)
 10. Report generation
 
 ## Scope

@@ -21,7 +21,7 @@ import { parseArgs } from "util";
 import { mkdtempSync, mkdirSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { getSessionDir } from "./lib/paths.ts";
+import { DATA_DIR, getSessionDir, toSlug } from "./lib/paths.ts";
 
 interface HarnessOptions {
   platform?: string;
@@ -71,8 +71,25 @@ function sq(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 
-function toSlug(target: string): string {
-  return target.replace(/^https?:\/\//, "").replace(/[^a-z0-9]/gi, "-").replace(/-+/g, "-").toLowerCase();
+/** Same bands generate-report.ts uses (≥9 critical, ≥7 high, ≥4 medium, else low). */
+export function severityFromCvss(cvss: number): string {
+  if (cvss >= 9.0) return "critical";
+  if (cvss >= 7.0) return "high";
+  if (cvss >= 4.0) return "medium";
+  return "low";
+}
+
+/**
+ * Map a MobileFinding onto the shared Finding shape (title/severity/cvss) so
+ * generate-report renders it correctly. cvss_estimate is kept for provenance.
+ */
+export function toSharedFinding(f: MobileFinding): MobileFinding & { title: string; severity: string; cvss: number } {
+  return {
+    title: f.type.toLowerCase().replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+    severity: severityFromCvss(f.cvss_estimate),
+    cvss: f.cvss_estimate,
+    ...f,
+  };
 }
 
 function parseCliArgs(argv: string[]): HarnessOptions {
@@ -407,7 +424,7 @@ Java.perform(function() {
 
 function resolveOutputPath(options: HarnessOptions): string {
   if (options.output) return options.output;
-  return "kimi-data/mobile-findings.json";
+  return join(DATA_DIR, "mobile-findings.json");
 }
 
 async function main(): Promise<void> {
@@ -434,7 +451,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  const criticalFindings = findings.filter((f) => f.cvss_estimate >= CRITICAL_CVSS_THRESHOLD);
+  const sharedFindings = findings.map(toSharedFinding);
+  const criticalFindings = sharedFindings.filter((f) => f.cvss_estimate >= CRITICAL_CVSS_THRESHOLD);
   const outputPath = resolveOutputPath(options);
   await Bun.write(
     outputPath,
@@ -442,8 +460,8 @@ async function main(): Promise<void> {
       {
         target: options.apk ?? options.ipa ?? options.platform,
         generated_at: new Date().toISOString(),
-        total_findings: findings.length,
-        findings,
+        total_findings: sharedFindings.length,
+        findings: sharedFindings,
         critical_findings: criticalFindings,
       },
       null,

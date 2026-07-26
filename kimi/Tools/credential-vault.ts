@@ -30,7 +30,7 @@
  */
 
 import { parseArgs } from "util";
-import { existsSync, mkdirSync } from "fs";
+import { existsSync, mkdirSync, writeFileSync } from "fs";
 import { chmod } from "fs/promises";
 import { dirname, join } from "path";
 import { MEMORY_DIR } from "./lib/paths.ts";
@@ -195,7 +195,8 @@ async function decodeEncrypted(raw: string, passphrase: string): Promise<VaultDa
 function ensureVaultDir(): void {
   const dir = vaultDir();
   if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+    // Restrictive mode at creation — no window where the dir is world-accessible.
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
 }
 
@@ -327,7 +328,8 @@ export function plainBackend(): VaultBackend {
     read: () => readVault(),
     write: async (data) => {
       ensureVaultDir();
-      await Bun.write(vaultFile(), encodePlain(data));
+      // Restrictive mode from the first write (no world-readable window).
+      writeFileSync(vaultFile(), encodePlain(data), { mode: 0o600 });
       await secureVaultPermissions();
     },
   };
@@ -355,7 +357,9 @@ async function readVault(passphrase?: string): Promise<VaultData> {
 async function writeVault(data: VaultData, passphrase: string): Promise<void> {
   ensureVaultDir();
   const encoded = await encodeEncrypted(data, passphrase);
-  await Bun.write(vaultFile(), encoded);
+  // Restrictive mode from the first write (no world-readable window);
+  // secureVaultPermissions() stays as belt-and-braces.
+  writeFileSync(vaultFile(), encoded, { mode: 0o600 });
   await secureVaultPermissions();
 }
 

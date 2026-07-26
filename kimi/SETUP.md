@@ -122,7 +122,7 @@ bun kimi/Tools/hunt-orchestrator.ts --target https://target.example.com --resume
 
 ## Credential vault encryption
 
-By default, the vault encrypts credentials using **AES-256-GCM** with a passphrase-derived key (PBKDF2, 100k iterations).
+By default, the vault encrypts credentials using **AES-256-GCM** with a passphrase-derived key (PBKDF2, 210k iterations; legacy v1 vaults with 100k iterations remain readable).
 
 Provide the passphrase via one of these methods (in order of precedence):
 

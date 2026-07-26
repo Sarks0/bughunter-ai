@@ -5,7 +5,7 @@
  */
 
 import { parseArgs } from "util";
-import { appendFileSync, mkdirSync, readdirSync, renameSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readdirSync, renameSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { getSessionDir, toSlug, MEMORY_DIR, REPO_ROOT, SESSIONS_DIR } from "./lib/paths.ts";
 import { isInScope, loadScopeFromConfig, scopeSummary, type Scope } from "./lib/scope.ts";
@@ -85,6 +85,8 @@ export interface HuntState {
     targetFindingCount: number;
   };
   scope?: Scope;
+  /** Path to the APK/IPA under test (mobile hunts); set via --apk at creation. */
+  apkPath?: string;
 }
 
 function getStatePath(slug: string): string {
@@ -186,7 +188,7 @@ export async function createHuntState(
   mode: HuntMode,
   workflow?: string,
   scope?: Scope,
-  opts: { force?: boolean } = {}
+  opts: { force?: boolean; apkPath?: string } = {}
 ): Promise<HuntState> {
   // Refuse out-of-scope targets unless explicitly forced.
   if (scope && (scope.in.length > 0 || scope.out.length > 0)) {
@@ -242,6 +244,7 @@ export async function createHuntState(
     findings: [],
     config: modeToConfig(mode),
     scope,
+    ...(opts.apkPath ? { apkPath: opts.apkPath } : {}),
   };
 
   await saveState(state);
@@ -463,7 +466,7 @@ function printUsage(): void {
   console.log(`hunt-orchestrator — BugHunter AI state machine
 
 Usage:
-  hunt-orchestrator --target URL [--mode bounty|pentest|comprehensive] [--workflow NAME] [--config path.json] [--force]
+  hunt-orchestrator --target URL [--mode bounty|pentest|comprehensive] [--workflow NAME] [--config path.json] [--apk path.apk] [--force]
   hunt-orchestrator --config path.json [--mode bounty|pentest|comprehensive] [--workflow NAME]
   hunt-orchestrator --target URL --resume
   hunt-orchestrator --target URL --status
@@ -477,12 +480,22 @@ Usage:
   hunt-orchestrator --target URL --reset
 
 Options:
+  --apk      Path to the APK under test (mobile hunts); stored in hunt state, satisfies the apk_exists gate
   --force    Override scope refusal on hunt creation and unmet workflow gates on --advance`);
 }
 
 /**
  * Evaluate a workflow gate metric against the session's artifacts.
  * Returns null when the metric cannot be evaluated.
+ *
+ * Metrics:
+ * - alive_urls: line count of recon/alive-urls.txt (0 when missing).
+ * - live_hosts: line count of recon/alive-hosts.json, falling back to alive_urls.
+ * - alive_hosts: alias of live_hosts (W_HUNT_NETWORK wording).
+ * - app_profile_exists: 1 when app-profile.json exists in the session dir, else 0.
+ * - apk_exists: 1 when an APK is known and present — either the hunt's stored
+ *   apkPath (--apk at creation) exists, or any *.apk sits in the session's
+ *   artifacts dir — else 0.
  */
 export async function evaluateGateMetric(state: HuntState, metric: string): Promise<number | null> {
   const reconDir = `${state.sessionDir}/recon`;
@@ -493,6 +506,7 @@ export async function evaluateGateMetric(state: HuntState, metric: string): Prom
         if (!(await file.exists())) return 0;
         return (await file.text()).split("\n").filter((l) => l.trim().length > 0).length;
       }
+      case "alive_hosts": // alias: W_HUNT_NETWORK gates on this name
       case "live_hosts": {
         const file = Bun.file(`${reconDir}/alive-hosts.json`);
         if (await file.exists()) {
@@ -503,6 +517,12 @@ export async function evaluateGateMetric(state: HuntState, metric: string): Prom
       }
       case "app_profile_exists": {
         return (await Bun.file(`${state.sessionDir}/app-profile.json`).exists()) ? 1 : 0;
+      }
+      case "apk_exists": {
+        if (state.apkPath && existsSync(state.apkPath)) return 1;
+        const artifactsDir = `${state.sessionDir}/artifacts`;
+        if (existsSync(artifactsDir) && readdirSync(artifactsDir).some((f) => f.endsWith(".apk"))) return 1;
+        return 0;
       }
       default:
         return null;
@@ -543,10 +563,12 @@ export async function checkPhaseGates(state: HuntState, phaseName: string): Prom
  */
 export function deriveTargetFromScope(scope: Scope): string {
   for (const entry of scope.in) {
-    // URL-shaped entry: parse and take the origin (drop path, port preserved, no wildcards).
+    // URL-shaped entry: strip a leading wildcard label from the host
+    // (https://*.example.com/* → https://example.com), then take the origin
+    // (drop path, port preserved, no wildcards).
     if (entry.includes("://")) {
       try {
-        const url = new URL(entry.replace(/\*/g, "x"));
+        const url = new URL(entry.replace(/:\/\/\*\./, "://").replace(/\*/g, "x"));
         if (url.hostname) return url.origin;
       } catch {
         continue;
@@ -561,6 +583,29 @@ export function deriveTargetFromScope(scope: Scope): string {
   throw new Error(
     "Could not derive a target from the scope: no usable in-scope entry. Pass --target or add 'target' to the config."
   );
+}
+
+/** Statuses accepted by --set-phase-status (never "running"/"pending" — those are machine-managed). */
+const SETTABLE_PHASE_STATUSES = ["completed", "failed", "skipped"] as const;
+
+/**
+ * Parse a `--set-phase-status PHASE:STATUS` argument.
+ * @throws Error on a malformed shape or a status outside completed/failed/skipped.
+ */
+export function parseSetPhaseStatusArg(raw: string): { phase: string; status: (typeof SETTABLE_PHASE_STATUSES)[number] } {
+  const match = /^([^:]+):([^:]+)$/.exec(raw);
+  if (!match) {
+    throw new Error(
+      `Invalid --set-phase-status "${raw}": expected PHASE:STATUS (e.g. RECON:completed). Allowed statuses: ${SETTABLE_PHASE_STATUSES.join(", ")}`
+    );
+  }
+  const [, phase, status] = match;
+  if (!(SETTABLE_PHASE_STATUSES as readonly string[]).includes(status)) {
+    throw new Error(
+      `Invalid phase status "${status}" in --set-phase-status. Allowed statuses: ${SETTABLE_PHASE_STATUSES.join(", ")}`
+    );
+  }
+  return { phase, status: status as (typeof SETTABLE_PHASE_STATUSES)[number] };
 }
 
 async function resolveTargetAndScope(cliArgs: { target?: string; config?: string }): Promise<{ target: string; scope?: Scope }> {
@@ -598,6 +643,7 @@ async function main() {
       "scope-check": { type: "boolean", default: false },
       "validate-tools": { type: "boolean", default: false },
       "set-phase-status": { type: "string" },
+      apk: { type: "string" },
       reason: { type: "string" },
       data: { type: "string" },
       findings: { type: "string" },
@@ -656,7 +702,7 @@ async function main() {
 
   if (args.reset) {
     const mode = (args.mode || "bounty") as HuntMode;
-    const state = await createHuntState(target, mode, args.workflow, scope, { force: args.force });
+    const state = await createHuntState(target, mode, args.workflow, scope, { force: args.force, apkPath: args.apk });
     console.log(`[RESET] Hunt reset for ${target}`);
     console.log(getHuntStatus(state));
     return;
@@ -732,7 +778,7 @@ async function main() {
       console.log("No active hunt.");
       return;
     }
-    const [phase, status] = args["set-phase-status"].split(":") as [string, Exclude<PhaseStatus, "running">];
+    const { phase, status } = parseSetPhaseStatusArg(args["set-phase-status"]);
     await setPhaseStatus(state, phase, status, args.reason, args.data ? JSON.parse(args.data) : undefined, args.findings);
     console.log(`[PHASE STATUS] ${phase} → ${status}`);
     return;
@@ -746,7 +792,7 @@ async function main() {
     return;
   }
 
-  const state = await createHuntState(target, mode, args.workflow, scope, { force: args.force });
+  const state = await createHuntState(target, mode, args.workflow, scope, { force: args.force, apkPath: args.apk });
   const firstPhase = getPhaseList(state)[0];
   state.phases[firstPhase].status = "running";
   state.phases[firstPhase].startTime = new Date().toISOString();

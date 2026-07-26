@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { isSameOrigin, isOffScopeNavigation, detectAiFeatures, parseExtraHeaders } from "../Tools/playwright-harness.ts";
+import { isSameOrigin, isOffScopeNavigation, detectAiFeatures, parseExtraHeaders, shouldSendExtraHeaders } from "../Tools/playwright-harness.ts";
 import type { Scope } from "../Tools/lib/scope.ts";
 
 describe("playwright-harness isSameOrigin", () => {
@@ -65,6 +65,31 @@ describe("playwright-harness detectAiFeatures", () => {
 
   it("returns an empty list for plain pages", () => {
     expect(detectAiFeatures("<html><body>Hello world</body></html>")).toEqual([]);
+  });
+});
+
+describe("playwright-harness shouldSendExtraHeaders (origin-scoped header injection)", () => {
+  const target = "https://dev.example.com";
+
+  it("allows same-origin URLs when no scope is configured", () => {
+    expect(shouldSendExtraHeaders("https://dev.example.com/api/me", target)).toBe(true);
+  });
+
+  it("rejects lookalike origins and other hosts (SSO-wall scenario)", () => {
+    expect(shouldSendExtraHeaders("https://dev.example.com.evil.com/x", target)).toBe(false);
+    expect(shouldSendExtraHeaders("https://vercel.com/sso-api?url=x", target)).toBe(false);
+    expect(shouldSendExtraHeaders("http://dev.example.com/x", target)).toBe(false); // different scheme
+  });
+
+  it("uses scope when configured: in-scope yes, scope_out no", () => {
+    const scope: Scope = { in: ["*.example.com"], out: ["admin.example.com"] };
+    expect(shouldSendExtraHeaders("https://app.example.com/x", target, scope)).toBe(true);
+    expect(shouldSendExtraHeaders("https://admin.example.com/panel", target, scope)).toBe(false);
+    expect(shouldSendExtraHeaders("https://other.org/x", target, scope)).toBe(false);
+  });
+
+  it("rejects unparseable URLs", () => {
+    expect(shouldSendExtraHeaders("not a url", target)).toBe(false);
   });
 });
 

@@ -56,6 +56,7 @@ This is a **port** of the original `skills/BugBountyFramework/` skill. The origi
 | `Tools/playwright-harness.ts` | Browser automation and app profiling |
 | `Tools/appium-harness.ts` | Mobile app testing harness |
 | `Tools/generate-report.ts` | Report generation from findings |
+| `Tools/validate-finding.ts` | Finding validation (re-test before reporting) |
 
 The orchestrator can also health-check the external toolset used by the agents
 (`subfinder`, `httpx`, `naabu`, `nuclei`, `ffuf`, `katana`, `gau`, `waymore`,

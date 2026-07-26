@@ -46,7 +46,7 @@ import { parseArgs } from "util";
 import { join } from "path";
 import { getSessionDir, toSlug } from "./lib/paths.ts";
 import { isInScope, loadScopeFromConfig, scopeSummary, type Scope } from "./lib/scope.ts";
-import { parseExtraHeaders } from "./lib/headers.ts";
+import { parseExtraHeaders, applyScopedExtraHeaders } from "./lib/headers.ts";
 import { normalizeFindings, type Finding } from "./lib/finding.ts";
 import { loadFindings } from "./generate-report.ts";
 
@@ -436,8 +436,10 @@ export async function validateXss(finding: Finding, ctx: ValidationContext): Pro
     const context = await browser.newContext({
       ignoreHTTPSErrors: true,
       ...(ctx.storageStatePath ? { storageState: ctx.storageStatePath } : {}),
-      ...(Object.keys(ctx.config.extraHeaders).length > 0 ? { extraHTTPHeaders: ctx.config.extraHeaders } : {}),
     });
+    // Extra headers only to the target origin / in-scope URLs — context-level
+    // extraHTTPHeaders would leak them to off-scope origins on redirect hops.
+    await applyScopedExtraHeaders(context, ctx.config.extraHeaders, ctx.target, ctx.scope);
     await context.addInitScript(() => {
       (window as unknown as { __xss_confirmed?: boolean }).__xss_confirmed =
         (window as unknown as { __xss_confirmed?: boolean }).__xss_confirmed ?? false;

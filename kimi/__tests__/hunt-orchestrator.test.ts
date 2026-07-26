@@ -10,6 +10,7 @@ import {
   checkPhaseGates,
   evaluateGateMetric,
   getPhaseList,
+  parseSetPhaseStatusArg,
   PHASES,
 } from "../Tools/hunt-orchestrator.ts";
 import { getSessionDir, toSlug, MEMORY_DIR } from "../Tools/lib/paths.ts";
@@ -178,6 +179,10 @@ describe("deriveTargetFromScope", () => {
     expect(deriveTargetFromScope({ in: ["*.example.com"], out: [] })).toBe("https://example.com");
   });
 
+  it("strips a wildcard host from URL-pattern entries", () => {
+    expect(deriveTargetFromScope({ in: ["https://*.example.com/*"], out: [] })).toBe("https://example.com");
+  });
+
   it("handles plain host entries and strips ports/paths", () => {
     expect(deriveTargetFromScope({ in: ["api.example.com:8443/admin"], out: [] })).toBe("https://api.example.com");
   });
@@ -290,6 +295,66 @@ describe("workflow gates", () => {
     expect(result.ok).toBe(false);
     expect(result.unevaluable).toEqual(["no_such_metric"]);
   });
+
+  it("evaluates alive_hosts as an alias of live_hosts (0 and >0 cases)", async () => {
+    const state = await createHuntState(TEST_TARGET, "bounty", "W_HUNT_NETWORK");
+    expect(await evaluateGateMetric(state, "alive_hosts")).toBe(0);
+
+    await Bun.write(`${state.sessionDir}/recon/alive-hosts.json`, '{"host":"10.0.0.1"}\n');
+    expect(await evaluateGateMetric(state, "alive_hosts")).toBe(1);
+
+    // Falls back to alive_urls when alive-hosts.json is absent.
+    const fresh = await createHuntState("https://example.com", "bounty");
+    await Bun.write(`${fresh.sessionDir}/recon/alive-urls.txt`, "https://a.example.com\nhttps://b.example.com\n");
+    expect(await evaluateGateMetric(fresh, "alive_hosts")).toBe(2);
+  });
+
+  it("evaluates apk_exists (0 without an APK, 1 via apkPath or artifacts dir)", async () => {
+    const state = await createHuntState(TEST_TARGET, "bounty", "W_HUNT_MOBILE");
+    expect(await evaluateGateMetric(state, "apk_exists")).toBe(0);
+
+    // Via the stored --apk path.
+    const apkPath = `${state.sessionDir}/artifacts/app.apk`;
+    state.apkPath = apkPath;
+    expect(await evaluateGateMetric(state, "apk_exists")).toBe(0); // path known but file missing
+    await Bun.write(apkPath, "PK fake apk");
+    expect(await evaluateGateMetric(state, "apk_exists")).toBe(1);
+
+    // Via any *.apk in the artifacts dir (no apkPath set).
+    const fresh = await createHuntState("https://example.com", "bounty");
+    expect(await evaluateGateMetric(fresh, "apk_exists")).toBe(0);
+    await Bun.write(`${fresh.sessionDir}/artifacts/dropped.apk`, "PK fake apk");
+    expect(await evaluateGateMetric(fresh, "apk_exists")).toBe(1);
+  });
+
+  it("stores --apk in hunt state at creation", async () => {
+    const state = await createHuntState(TEST_TARGET, "bounty", "W_HUNT_MOBILE", undefined, {
+      apkPath: "/tmp/app.apk",
+    });
+    expect(state.apkPath).toBe("/tmp/app.apk");
+    const loaded = await loadState(TEST_SLUG);
+    expect(loaded!.apkPath).toBe("/tmp/app.apk");
+  });
+});
+
+describe("parseSetPhaseStatusArg", () => {
+  it("parses valid PHASE:STATUS pairs", () => {
+    expect(parseSetPhaseStatusArg("RECON:completed")).toEqual({ phase: "RECON", status: "completed" });
+    expect(parseSetPhaseStatusArg("RECON:failed")).toEqual({ phase: "RECON", status: "failed" });
+    expect(parseSetPhaseStatusArg("RECON:skipped")).toEqual({ phase: "RECON", status: "skipped" });
+  });
+
+  it("rejects malformed shapes", () => {
+    expect(() => parseSetPhaseStatusArg("RECON")).toThrow(/expected PHASE:STATUS/);
+    expect(() => parseSetPhaseStatusArg("RECON:")).toThrow(/expected PHASE:STATUS/);
+    expect(() => parseSetPhaseStatusArg("a:b:c")).toThrow(/expected PHASE:STATUS/);
+  });
+
+  it("rejects disallowed statuses (including running and pending)", () => {
+    expect(() => parseSetPhaseStatusArg("RECON:running")).toThrow(/Invalid phase status "running"/);
+    expect(() => parseSetPhaseStatusArg("RECON:pending")).toThrow(/Invalid phase status "pending"/);
+    expect(() => parseSetPhaseStatusArg("RECON:done")).toThrow(/Invalid phase status "done"/);
+  });
 });
 
 describe("hunt-orchestrator CLI error handling", () => {
@@ -325,5 +390,17 @@ describe("hunt-orchestrator CLI error handling", () => {
     expect(exitCode).toBe(1);
     expect(stderr).toContain('[HUNT] ERROR: Unknown workflow "W_NOPE"');
     expect(stderr).not.toContain("at ");
+  });
+
+  it("--set-phase-status with an invalid status exits 1 with a clean error", async () => {
+    await createHuntState(TEST_TARGET, "bounty");
+    try {
+      const { exitCode, stderr } = runCli(["--target", TEST_TARGET, "--set-phase-status", "RECON:running"]);
+      expect(exitCode).toBe(1);
+      expect(stderr).toContain('[HUNT] ERROR: Invalid phase status "running"');
+      expect(stderr).not.toContain("at ");
+    } finally {
+      await cleanup();
+    }
   });
 });
