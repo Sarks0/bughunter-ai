@@ -2,6 +2,8 @@
 
 This guide walks through installing and running the Kimi port of BugHunter AI.
 
+> **Shortcut:** `./install.sh --kimi-only` from the repo root automates the Bun install, `kimi-data/` runtime dirs, Playwright browser download, and tool-health check described below.
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) (v1.0+)

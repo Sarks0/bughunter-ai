@@ -307,13 +307,23 @@ flowchart TB
 
 ## Quick Start
 
-For the minimal BugHunter-only install:
+The unified installer sets up BugHunter AI for **both Claude Code and Kimi Code CLI**:
 
 ```bash
 git clone https://github.com/h4ckologic/bughunter-ai.git
 cd bughunter-ai
 ./install.sh
 ```
+
+By default it installs both sides (Claude skill → `~/.claude/skills/`, Kimi dependencies + `kimi-data/` runtime dirs + Playwright browser). It is idempotent — safe to re-run; existing installs are backed up with a timestamp. Flags:
+
+| Flag | Effect |
+|------|--------|
+| `--kimi-only` | Install only the Kimi Code CLI side |
+| `--claude-only` | Install only the Claude Code side |
+| `--with-mcp` | Chain into `./scripts/setup-mcp.sh` at the end |
+| `--skip-browser` | Skip the Playwright chromium download |
+| `--help` | Show usage |
 
 For the **full setup with PAI, Superpowers, and all security skills**, see the [Full Setup Guide](SETUP.md).
 
